@@ -1,9 +1,6 @@
 # Zevrae Backend
 
-A complete e-commerce backend (Node.js/Express + MongoDB/Mongoose) built out
-from the `products` schema you originally provided. Since only the database
-section was included, I designed the rest of the application around it:
-auth, users, categories, cart, orders, and reviews.
+A complete e-commerce backend (Node.js/Express + MongoDB/Mongoose).
 
 ## Stack
 - Express
