@@ -1,17 +1,17 @@
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 const { Schema } = mongoose;
 
 const ReviewSchema = new Schema(
   {
     product: {
       type: Schema.Types.ObjectId,
-      ref: 'Product',
+      ref: "Product",
       required: true,
       index: true,
     },
     user: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
       index: true,
     },
@@ -37,9 +37,9 @@ const ReviewSchema = new Schema(
     },
   },
   {
-    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-    versionKey: '__v',
-  }
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+    versionKey: "__v",
+  },
 );
 
 // One review per user per product
@@ -51,9 +51,9 @@ function excludeSoftDeleted(next) {
   }
   next();
 }
-ReviewSchema.pre('find', excludeSoftDeleted);
-ReviewSchema.pre('findOne', excludeSoftDeleted);
-ReviewSchema.pre('countDocuments', excludeSoftDeleted);
+ReviewSchema.pre("find", excludeSoftDeleted);
+ReviewSchema.pre("findOne", excludeSoftDeleted);
+ReviewSchema.pre("countDocuments", excludeSoftDeleted);
 
 ReviewSchema.methods.softDelete = function () {
   this.is_deleted = true;
@@ -61,4 +61,4 @@ ReviewSchema.methods.softDelete = function () {
   return this.save();
 };
 
-module.exports = mongoose.model('Review', ReviewSchema);
+export default mongoose.model("Review", ReviewSchema);

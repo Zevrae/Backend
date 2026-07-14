@@ -1,17 +1,18 @@
-const express = require('express');
-const router = express.Router();
-const {
+import express from "express";
+import {
   createOrder,
   getOrders,
   getOrderById,
   updateOrderStatus,
-} = require('../controllers/orderController');
-const { protect, authorize } = require('../middleware/auth');
+} from "../controllers/orderController.js";
+import { protect, authorize } from "../middleware/auth.js";
+
+const router = express.Router();
 
 router.use(protect);
 
-router.route('/').get(getOrders).post(createOrder);
-router.get('/:id', getOrderById);
-router.patch('/:id/status', authorize('admin'), updateOrderStatus);
+router.route("/").get(getOrders).post(createOrder);
+router.get("/:id", getOrderById);
+router.patch("/:id/status", authorize("admin"), updateOrderStatus);
 
-module.exports = router;
+export default router;

@@ -1,11 +1,11 @@
-const mongoose = require('mongoose');
+import mongoose from "mongoose";
 const { Schema } = mongoose;
 
 const CartItemSchema = new Schema(
   {
     product: {
       type: Schema.Types.ObjectId,
-      ref: 'Product',
+      ref: "Product",
       required: true,
     },
     name: { type: String, required: true }, // snapshot at time of add
@@ -14,18 +14,18 @@ const CartItemSchema = new Schema(
     quantity: {
       type: Number,
       required: true,
-      min: [1, 'Quantity must be at least 1'],
+      min: [1, "Quantity must be at least 1"],
       default: 1,
     },
   },
-  { _id: true }
+  { _id: true },
 );
 
 const CartSchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
-      ref: 'User',
+      ref: "User",
       required: true,
       unique: true,
       index: true,
@@ -36,15 +36,15 @@ const CartSchema = new Schema(
     },
   },
   {
-    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-    versionKey: '__v',
-  }
+    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
+    versionKey: "__v",
+  },
 );
 
-CartSchema.virtual('subtotal').get(function () {
+CartSchema.virtual("subtotal").get(function () {
   return this.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 });
-CartSchema.set('toJSON', { virtuals: true });
-CartSchema.set('toObject', { virtuals: true });
+CartSchema.set("toJSON", { virtuals: true });
+CartSchema.set("toObject", { virtuals: true });
 
-module.exports = mongoose.model('Cart', CartSchema);
+export default mongoose.model("Cart", CartSchema);

@@ -1,8 +1,9 @@
-const Review = require('../models/Review');
+import mongoose from "mongoose";
+import Review from "../models/Review.js";
 
 // @desc    Create a review for a product
 // @route   POST /api/products/:productId/reviews
-const createReview = async (req, res, next) => {
+export const createReview = async (req, res, next) => {
   try {
     const { rating, comment } = req.body;
     const review = await Review.create({
@@ -19,7 +20,7 @@ const createReview = async (req, res, next) => {
 
 // @desc    Get all reviews for a product, plus average rating
 // @route   GET /api/products/:productId/reviews
-const getReviewsForProduct = async (req, res, next) => {
+export const getReviewsForProduct = async (req, res, next) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
@@ -28,11 +29,27 @@ const getReviewsForProduct = async (req, res, next) => {
     const filter = { product: req.params.productId };
 
     const [items, total, ratingAgg] = await Promise.all([
-      Review.find(filter).populate('user', 'name').sort('-created_at').skip(skip).limit(limit).lean(),
+      Review.find(filter)
+        .populate("user", "name")
+        .sort("-created_at")
+        .skip(skip)
+        .limit(limit)
+        .lean(),
       Review.countDocuments(filter),
       Review.aggregate([
-        { $match: { product: new (require('mongoose').Types.ObjectId)(req.params.productId), is_deleted: { $ne: true } } },
-        { $group: { _id: '$product', averageRating: { $avg: '$rating' }, count: { $sum: 1 } } },
+        {
+          $match: {
+            product: new mongoose.Types.ObjectId(req.params.productId),
+            is_deleted: { $ne: true },
+          },
+        },
+        {
+          $group: {
+            _id: "$product",
+            averageRating: { $avg: "$rating" },
+            count: { $sum: 1 },
+          },
+        },
       ]),
     ]);
 
@@ -40,7 +57,10 @@ const getReviewsForProduct = async (req, res, next) => {
       success: true,
       data: items,
       summary: ratingAgg[0]
-        ? { averageRating: Math.round(ratingAgg[0].averageRating * 10) / 10, count: ratingAgg[0].count }
+        ? {
+            averageRating: Math.round(ratingAgg[0].averageRating * 10) / 10,
+            count: ratingAgg[0].count,
+          }
         : { averageRating: 0, count: 0 },
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
@@ -51,10 +71,16 @@ const getReviewsForProduct = async (req, res, next) => {
 
 // @desc    Update own review
 // @route   PUT /api/reviews/:id
-const updateReview = async (req, res, next) => {
+export const updateReview = async (req, res, next) => {
   try {
-    const review = await Review.findOne({ _id: req.params.id, user: req.user._id });
-    if (!review) return res.status(404).json({ success: false, message: 'Review not found' });
+    const review = await Review.findOne({
+      _id: req.params.id,
+      user: req.user._id,
+    });
+    if (!review)
+      return res
+        .status(404)
+        .json({ success: false, message: "Review not found" });
 
     if (req.body.rating !== undefined) review.rating = req.body.rating;
     if (req.body.comment !== undefined) review.comment = req.body.comment;
@@ -68,18 +94,21 @@ const updateReview = async (req, res, next) => {
 
 // @desc    Soft delete own review (or any review, if admin)
 // @route   DELETE /api/reviews/:id
-const deleteReview = async (req, res, next) => {
+export const deleteReview = async (req, res, next) => {
   try {
     const filter =
-      req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, user: req.user._id };
+      req.user.role === "admin"
+        ? { _id: req.params.id }
+        : { _id: req.params.id, user: req.user._id };
     const review = await Review.findOne(filter);
-    if (!review) return res.status(404).json({ success: false, message: 'Review not found' });
+    if (!review)
+      return res
+        .status(404)
+        .json({ success: false, message: "Review not found" });
 
     await review.softDelete();
-    res.json({ success: true, message: 'Review soft-deleted' });
+    res.json({ success: true, message: "Review soft-deleted" });
   } catch (err) {
     next(err);
   }
 };
-
-module.exports = { createReview, getReviewsForProduct, updateReview, deleteReview };
