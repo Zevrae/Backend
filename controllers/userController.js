@@ -1,10 +1,10 @@
-import User from "../models/User.js";
+import User from '../models/User.js';
 
 // @desc    Update own profile
 // @route   PUT /api/users/me
 export const updateMe = async (req, res, next) => {
   try {
-    const allowedFields = ["name", "phone", "addresses"];
+    const allowedFields = ['name', 'phone', 'addresses'];
     const updates = {};
     allowedFields.forEach((field) => {
       if (req.body[field] !== undefined) updates[field] = req.body[field];
@@ -51,10 +51,7 @@ export const getUsers = async (req, res, next) => {
 export const getUserById = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id).lean();
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     res.json({ success: true, data: user });
   } catch (err) {
     next(err);
@@ -66,12 +63,9 @@ export const getUserById = async (req, res, next) => {
 export const deleteUser = async (req, res, next) => {
   try {
     const user = await User.findById(req.params.id);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
     await user.softDelete();
-    res.json({ success: true, message: "User soft-deleted" });
+    res.json({ success: true, message: 'User soft-deleted' });
   } catch (err) {
     next(err);
   }

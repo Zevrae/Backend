@@ -1,10 +1,10 @@
-import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
 const { Schema } = mongoose;
 
 const AddressSchema = new Schema(
   {
-    label: { type: String, trim: true, default: "Home" },
+    label: { type: String, trim: true, default: 'Home' },
     line1: { type: String, required: true, trim: true },
     line2: { type: String, trim: true },
     city: { type: String, required: true, trim: true },
@@ -13,36 +13,36 @@ const AddressSchema = new Schema(
     country: { type: String, required: true, trim: true },
     is_default: { type: Boolean, default: false },
   },
-  { _id: true },
+  { _id: true }
 );
 
 const UserSchema = new Schema(
   {
     name: {
       type: String,
-      required: [true, "Name is required"],
+      required: [true, 'Name is required'],
       trim: true,
       maxlength: 120,
     },
     email: {
       type: String,
-      required: [true, "Email is required"],
+      required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^\S+@\S+\.\S+$/, "Please provide a valid email"],
+      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
       index: true,
     },
     password: {
       type: String,
-      required: [true, "Password is required"],
-      minlength: [8, "Password must be at least 8 characters"],
+      required: [true, 'Password is required'],
+      minlength: [8, 'Password must be at least 8 characters'],
       select: false,
     },
     role: {
       type: String,
-      enum: ["customer", "admin"],
-      default: "customer",
+      enum: ['customer', 'admin'],
+      default: 'customer',
       index: true,
     },
     phone: {
@@ -70,14 +70,14 @@ const UserSchema = new Schema(
     },
   },
   {
-    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
-    versionKey: "__v",
-  },
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    versionKey: '__v',
+  }
 );
 
 // Hash password before saving
-UserSchema.pre("save", async function hashPassword(next) {
-  if (!this.isModified("password")) return next();
+UserSchema.pre('save', async function hashPassword(next) {
+  if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
@@ -90,9 +90,9 @@ function excludeSoftDeleted(next) {
   }
   next();
 }
-UserSchema.pre("find", excludeSoftDeleted);
-UserSchema.pre("findOne", excludeSoftDeleted);
-UserSchema.pre("countDocuments", excludeSoftDeleted);
+UserSchema.pre('find', excludeSoftDeleted);
+UserSchema.pre('findOne', excludeSoftDeleted);
+UserSchema.pre('countDocuments', excludeSoftDeleted);
 
 UserSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
@@ -111,4 +111,4 @@ UserSchema.methods.toSafeObject = function () {
   return obj;
 };
 
-export default mongoose.model("User", UserSchema);
+export default mongoose.model('User', UserSchema);

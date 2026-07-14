@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
-import Review from "../models/Review.js";
+import mongoose from 'mongoose';
+import Review from '../models/Review.js';
 
 // @desc    Create a review for a product
 // @route   POST /api/products/:productId/reviews
@@ -29,27 +29,11 @@ export const getReviewsForProduct = async (req, res, next) => {
     const filter = { product: req.params.productId };
 
     const [items, total, ratingAgg] = await Promise.all([
-      Review.find(filter)
-        .populate("user", "name")
-        .sort("-created_at")
-        .skip(skip)
-        .limit(limit)
-        .lean(),
+      Review.find(filter).populate('user', 'name').sort('-created_at').skip(skip).limit(limit).lean(),
       Review.countDocuments(filter),
       Review.aggregate([
-        {
-          $match: {
-            product: new mongoose.Types.ObjectId(req.params.productId),
-            is_deleted: { $ne: true },
-          },
-        },
-        {
-          $group: {
-            _id: "$product",
-            averageRating: { $avg: "$rating" },
-            count: { $sum: 1 },
-          },
-        },
+        { $match: { product: new mongoose.Types.ObjectId(req.params.productId), is_deleted: { $ne: true } } },
+        { $group: { _id: '$product', averageRating: { $avg: '$rating' }, count: { $sum: 1 } } },
       ]),
     ]);
 
@@ -57,10 +41,7 @@ export const getReviewsForProduct = async (req, res, next) => {
       success: true,
       data: items,
       summary: ratingAgg[0]
-        ? {
-            averageRating: Math.round(ratingAgg[0].averageRating * 10) / 10,
-            count: ratingAgg[0].count,
-          }
+        ? { averageRating: Math.round(ratingAgg[0].averageRating * 10) / 10, count: ratingAgg[0].count }
         : { averageRating: 0, count: 0 },
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
@@ -73,14 +54,8 @@ export const getReviewsForProduct = async (req, res, next) => {
 // @route   PUT /api/reviews/:id
 export const updateReview = async (req, res, next) => {
   try {
-    const review = await Review.findOne({
-      _id: req.params.id,
-      user: req.user._id,
-    });
-    if (!review)
-      return res
-        .status(404)
-        .json({ success: false, message: "Review not found" });
+    const review = await Review.findOne({ _id: req.params.id, user: req.user._id });
+    if (!review) return res.status(404).json({ success: false, message: 'Review not found' });
 
     if (req.body.rating !== undefined) review.rating = req.body.rating;
     if (req.body.comment !== undefined) review.comment = req.body.comment;
@@ -97,17 +72,12 @@ export const updateReview = async (req, res, next) => {
 export const deleteReview = async (req, res, next) => {
   try {
     const filter =
-      req.user.role === "admin"
-        ? { _id: req.params.id }
-        : { _id: req.params.id, user: req.user._id };
+      req.user.role === 'admin' ? { _id: req.params.id } : { _id: req.params.id, user: req.user._id };
     const review = await Review.findOne(filter);
-    if (!review)
-      return res
-        .status(404)
-        .json({ success: false, message: "Review not found" });
+    if (!review) return res.status(404).json({ success: false, message: 'Review not found' });
 
     await review.softDelete();
-    res.json({ success: true, message: "Review soft-deleted" });
+    res.json({ success: true, message: 'Review soft-deleted' });
   } catch (err) {
     next(err);
   }

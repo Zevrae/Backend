@@ -1,11 +1,11 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const CategorySchema = new Schema(
   {
     name: {
       type: String,
-      required: [true, "Category name is required"],
+      required: [true, 'Category name is required'],
       trim: true,
       unique: true,
     },
@@ -23,14 +23,14 @@ const CategorySchema = new Schema(
     },
     parent: {
       type: Schema.Types.ObjectId,
-      ref: "Category",
+      ref: 'Category',
       default: null,
       index: true,
     },
     status: {
       type: String,
-      enum: ["active", "inactive"],
-      default: "active",
+      enum: ['active', 'inactive'],
+      default: 'active',
       index: true,
     },
     is_deleted: {
@@ -44,9 +44,9 @@ const CategorySchema = new Schema(
     },
   },
   {
-    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
-    versionKey: "__v",
-  },
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    versionKey: '__v',
+  }
 );
 
 function excludeSoftDeleted(next) {
@@ -55,9 +55,9 @@ function excludeSoftDeleted(next) {
   }
   next();
 }
-CategorySchema.pre("find", excludeSoftDeleted);
-CategorySchema.pre("findOne", excludeSoftDeleted);
-CategorySchema.pre("countDocuments", excludeSoftDeleted);
+CategorySchema.pre('find', excludeSoftDeleted);
+CategorySchema.pre('findOne', excludeSoftDeleted);
+CategorySchema.pre('countDocuments', excludeSoftDeleted);
 
 CategorySchema.methods.softDelete = function () {
   this.is_deleted = true;
@@ -65,4 +65,4 @@ CategorySchema.methods.softDelete = function () {
   return this.save();
 };
 
-export default mongoose.model("Category", CategorySchema);
+export default mongoose.model('Category', CategorySchema);

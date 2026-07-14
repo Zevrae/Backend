@@ -1,11 +1,15 @@
 # Zevrae Backend
 
-A complete e-commerce backend (Node.js/Express + MongoDB/Mongoose).
+A complete e-commerce backend (Node.js/Express + MongoDB/Mongoose) built out
+from the `products` schema you originally provided. Since only the database
+section was included, I designed the rest of the application around it:
+auth, users, categories, cart, orders, and reviews.
 
 ## Stack
-- Express
+- Express (ES Modules — `"type": "module"`)
 - Mongoose (MongoDB)
 - JWT auth (jsonwebtoken + bcryptjs)
+- Swagger / OpenAPI 3.0 docs (swagger-jsdoc + swagger-ui-express)
 - Helmet, CORS, Morgan
 
 ## Setup
@@ -16,6 +20,17 @@ npm run dev             # or: npm start
 ```
 
 Requires a running MongoDB instance (local or Atlas) at the URI in `.env`.
+Node 18+ is recommended (native `fetch`, stable ESM support).
+
+## API documentation
+Once the server is running:
+- Interactive Swagger UI: `http://localhost:5000/api-docs`
+- Raw OpenAPI JSON: `http://localhost:5000/api-docs.json`
+
+All routes are documented via JSDoc `@swagger` comments directly above each
+route in `routes/*.js`; the spec is assembled in `config/swagger.js`. To
+authorize requests in the UI, click **Authorize** and paste a JWT obtained
+from `POST /api/auth/login`.
 
 ## Modules
 
@@ -97,8 +112,17 @@ Standard CRUD, `GET` public, write ops admin-only. Supports a self-referencing
   where noted.
 
 ## Verification performed
-Every file was syntax-checked (`node --check`) and require-loaded to confirm
-imports and route wiring are correct. A full live-DB integration test
-wasn't possible in this sandboxed environment (MongoDB binary downloads are
-network-restricted here), so **test the auth → cart → checkout flow against
-a real MongoDB instance before deploying**.
+- Every file syntax-checks under Node's ESM parser (`node --check`).
+- Every module/route/controller was `import`-loaded successfully.
+- The generated OpenAPI spec was inspected directly: **19 documented paths**
+  across all 7 modules, 17 reusable schemas.
+- The real Express app (routes, middleware, Swagger UI) was booted and hit
+  over HTTP: `/health` → 200, `/api-docs.json` → 200 with the full path list,
+  `/api-docs` → 200 serving the Swagger UI HTML, an unauthenticated request
+  to a protected route → 401 as expected, and a DB-backed route correctly
+  reaches Mongoose (fails with 500 only because no MongoDB is reachable in
+  this sandbox).
+
+A full live-DB integration test wasn't possible here (MongoDB binary
+downloads are network-restricted in this sandbox), so **test the auth →
+cart → checkout flow against a real MongoDB instance before deploying**.

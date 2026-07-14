@@ -1,11 +1,11 @@
-import mongoose from "mongoose";
+import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
 const OrderItemSchema = new Schema(
   {
     product: {
       type: Schema.Types.ObjectId,
-      ref: "Product",
+      ref: 'Product',
       required: true,
     },
     name: { type: String, required: true },
@@ -13,7 +13,7 @@ const OrderItemSchema = new Schema(
     size: { type: String },
     quantity: { type: Number, required: true, min: 1 },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const ShippingAddressSchema = new Schema(
@@ -25,24 +25,21 @@ const ShippingAddressSchema = new Schema(
     postal_code: { type: String, required: true },
     country: { type: String, required: true },
   },
-  { _id: false },
+  { _id: false }
 );
 
 const OrderSchema = new Schema(
   {
     user: {
       type: Schema.Types.ObjectId,
-      ref: "User",
+      ref: 'User',
       required: true,
       index: true,
     },
     items: {
       type: [OrderItemSchema],
       required: true,
-      validate: [
-        (arr) => arr.length > 0,
-        "Order must contain at least one item",
-      ],
+      validate: [(arr) => arr.length > 0, 'Order must contain at least one item'],
     },
     shipping_address: {
       type: ShippingAddressSchema,
@@ -53,14 +50,14 @@ const OrderSchema = new Schema(
     total: { type: Number, required: true, min: 0 },
     payment_status: {
       type: String,
-      enum: ["pending", "paid", "failed", "refunded"],
-      default: "pending",
+      enum: ['pending', 'paid', 'failed', 'refunded'],
+      default: 'pending',
       index: true,
     },
     order_status: {
       type: String,
-      enum: ["placed", "processing", "shipped", "delivered", "cancelled"],
-      default: "placed",
+      enum: ['placed', 'processing', 'shipped', 'delivered', 'cancelled'],
+      default: 'placed',
       index: true,
     },
     is_deleted: {
@@ -74,9 +71,9 @@ const OrderSchema = new Schema(
     },
   },
   {
-    timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
-    versionKey: "__v",
-  },
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    versionKey: '__v',
+  }
 );
 
 OrderSchema.index({ user: 1, created_at: -1 });
@@ -87,9 +84,9 @@ function excludeSoftDeleted(next) {
   }
   next();
 }
-OrderSchema.pre("find", excludeSoftDeleted);
-OrderSchema.pre("findOne", excludeSoftDeleted);
-OrderSchema.pre("countDocuments", excludeSoftDeleted);
+OrderSchema.pre('find', excludeSoftDeleted);
+OrderSchema.pre('findOne', excludeSoftDeleted);
+OrderSchema.pre('countDocuments', excludeSoftDeleted);
 
 OrderSchema.methods.softDelete = function () {
   this.is_deleted = true;
@@ -97,4 +94,4 @@ OrderSchema.methods.softDelete = function () {
   return this.save();
 };
 
-export default mongoose.model("Order", OrderSchema);
+export default mongoose.model('Order', OrderSchema);

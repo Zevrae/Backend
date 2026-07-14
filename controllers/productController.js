@@ -1,4 +1,4 @@
-import Product from "../models/Product.js";
+import Product from '../models/Product.js';
 
 // @desc    Create a product
 // @route   POST /api/products
@@ -21,15 +21,12 @@ export const getProducts = async (req, res, next) => {
     const skip = (page - 1) * limit;
 
     const filter = {};
-
     if (req.query.category) filter.category = req.query.category;
     if (req.query.subcategory) filter.subcategory = req.query.subcategory;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.search) filter.$text = { $search: req.query.search };
 
-    const sort = req.query.sort
-      ? req.query.sort.split(",").join(" ")
-      : "-created_at";
+    const sort = req.query.sort ? req.query.sort.split(',').join(' ') : '-created_at';
 
     const [items, total] = await Promise.all([
       Product.find(filter).sort(sort).skip(skip).limit(limit).lean(),
@@ -56,13 +53,9 @@ export const getProducts = async (req, res, next) => {
 export const getProductById = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id).lean();
-
     if (!product) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-
     res.json({ success: true, data: product });
   } catch (err) {
     next(err);
@@ -76,19 +69,11 @@ export const updateProduct = async (req, res, next) => {
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, is_deleted: { $ne: true } },
       req.body,
-      {
-        new: true,
-        runValidators: true,
-        context: "query",
-      },
+      { new: true, runValidators: true, context: 'query' }
     );
-
     if (!product) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-
     res.json({ success: true, data: product });
   } catch (err) {
     next(err);
@@ -99,24 +84,12 @@ export const updateProduct = async (req, res, next) => {
 // @route   DELETE /api/products/:id
 export const deleteProduct = async (req, res, next) => {
   try {
-    const product = await Product.findOne({
-      _id: req.params.id,
-      is_deleted: { $ne: true },
-    });
-
+    const product = await Product.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
     if (!product) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Product not found" });
+      return res.status(404).json({ success: false, message: 'Product not found' });
     }
-
     await product.softDelete();
-
-    res.json({
-      success: true,
-      message: "Product soft-deleted",
-      data: product,
-    });
+    res.json({ success: true, message: 'Product soft-deleted', data: product });
   } catch (err) {
     next(err);
   }
@@ -126,24 +99,12 @@ export const deleteProduct = async (req, res, next) => {
 // @route   PATCH /api/products/:id/restore
 export const restoreProduct = async (req, res, next) => {
   try {
-    const product = await Product.findOne({
-      _id: req.params.id,
-    }).setOptions({ withDeleted: true });
-
+    const product = await Product.findOne({ _id: req.params.id }).setOptions({ withDeleted: true });
     if (!product || !product.is_deleted) {
-      return res.status(404).json({
-        success: false,
-        message: "Deleted product not found",
-      });
+      return res.status(404).json({ success: false, message: 'Deleted product not found' });
     }
-
     await product.restore();
-
-    res.json({
-      success: true,
-      message: "Product restored",
-      data: product,
-    });
+    res.json({ success: true, message: 'Product restored', data: product });
   } catch (err) {
     next(err);
   }
