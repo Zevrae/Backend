@@ -78,6 +78,7 @@ const options = {
             role: { type: 'string', enum: ['customer', 'admin'] },
             phone: { type: 'string' },
             is_active: { type: 'boolean' },
+            is_email_verified: { type: 'boolean' },
             created_at: { type: 'string', format: 'date-time' },
           },
         },
@@ -184,6 +185,19 @@ const options = {
               type: 'string',
               enum: ['placed', 'processing', 'shipped', 'delivered', 'cancelled'],
             },
+            razorpay_order_id: { type: 'string' },
+            razorpay_payment_id: { type: 'string' },
+          },
+        },
+        PaymentInfo: {
+          type: 'object',
+          description: 'Details needed to open Razorpay Checkout on the client',
+          properties: {
+            provider: { type: 'string', example: 'razorpay' },
+            key_id: { type: 'string' },
+            order_id: { type: 'string' },
+            amount: { type: 'integer' },
+            currency: { type: 'string', example: 'INR' },
           },
         },
         CreateOrderInput: {

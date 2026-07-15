@@ -6,9 +6,12 @@ import {
   updateProduct,
   deleteProduct,
   restoreProduct,
+  uploadProductImages,
+  deleteProductImage,
 } from '../controllers/productController.js';
 import reviewRoutes from './reviewRoutes.js';
 import { protect, authorize } from '../middleware/auth.js';
+import { uploadImages } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -152,6 +155,71 @@ router
  *         description: Deleted product not found
  */
 router.patch('/:id/restore', protect, authorize('admin'), restoreProduct);
+
+/**
+ * @swagger
+ * /products/{id}/images:
+ *   post:
+ *     summary: Upload one or more images for a product to Appwrite Storage (admin only)
+ *     description: >
+ *       Uploads via multipart/form-data under the "images" field (up to 5 files, 5MB each,
+ *       JPEG/PNG/WEBP/GIF only). The resulting public URLs are appended to the product's `images` array.
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *     responses:
+ *       201:
+ *         description: Images uploaded and added to the product
+ *       400:
+ *         description: No files provided, or an invalid file type/size
+ *       404:
+ *         description: Product not found
+ *       503:
+ *         description: Appwrite is not configured on the server
+ *   delete:
+ *     summary: Remove an image from a product and delete it from Appwrite Storage (admin only)
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [imageUrl]
+ *             properties:
+ *               imageUrl: { type: string, description: 'One of the URLs in the product''s images array' }
+ *     responses:
+ *       200:
+ *         description: Image removed
+ *       404:
+ *         description: Product or image not found
+ */
+router
+  .route('/:id/images')
+  .post(protect, authorize('admin'), uploadImages, uploadProductImages)
+  .delete(protect, authorize('admin'), deleteProductImage);
 
 // Nested: /api/products/:productId/reviews
 router.use('/:productId/reviews', reviewRoutes);

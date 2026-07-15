@@ -55,7 +55,7 @@ router.use(protect);
  *             $ref: '#/components/schemas/CreateOrderInput'
  *     responses:
  *       201:
- *         description: Order created
+ *         description: Order created — includes Razorpay payment details to open Checkout with, if configured
  *         content:
  *           application/json:
  *             schema:
@@ -63,6 +63,7 @@ router.use(protect);
  *               properties:
  *                 success: { type: boolean }
  *                 data: { $ref: '#/components/schemas/Order' }
+ *                 payment: { $ref: '#/components/schemas/PaymentInfo' }
  *       400:
  *         description: Cart is empty or shipping address missing
  */

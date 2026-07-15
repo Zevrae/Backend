@@ -21,6 +21,12 @@ export function errorHandler(err, req, res, next) {
       .join(', ');
   }
 
+  // Multer file upload errors (bad file type, too large, too many files)
+  if (err.name === 'MulterError') {
+    statusCode = 400;
+    message = err.message;
+  }
+
   // Mongoose duplicate key error
   if (err.code === 11000) {
     statusCode = 409;

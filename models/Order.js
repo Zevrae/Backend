@@ -54,6 +54,18 @@ const OrderSchema = new Schema(
       default: 'pending',
       index: true,
     },
+    // --- Payment gateway (Razorpay) tracking ---
+    razorpay_order_id: {
+      type: String,
+      index: true,
+    },
+    razorpay_payment_id: {
+      type: String,
+    },
+    razorpay_signature: {
+      type: String,
+      select: false,
+    },
     order_status: {
       type: String,
       enum: ['placed', 'processing', 'shipped', 'delivered', 'cancelled'],

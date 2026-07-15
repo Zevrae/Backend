@@ -1,9 +1,10 @@
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
+import { getRazorpay, isRazorpayConfigured } from '../utils/razorpay.js';
 
 const SHIPPING_FEE = 0; // Assumption: flat/free shipping placeholder — wire up real logic as needed
 
-// @desc    Place an order from the current cart
+// @desc    Place an order from the current cart, and open a Razorpay order for payment
 // @route   POST /api/orders
 export const createOrder = async (req, res, next) => {
   try {
@@ -35,11 +36,42 @@ export const createOrder = async (req, res, next) => {
       total,
     });
 
-    // Empty the cart after a successful order
+    // Empty the cart once the order record exists (payment is handled separately)
     cart.items = [];
     await cart.save();
 
-    res.status(201).json({ success: true, data: order });
+    let razorpayOrder = null;
+    if (isRazorpayConfigured()) {
+      const rp = getRazorpay();
+      // Amount is in the smallest currency unit (paise for INR), matching
+      // how `price`/`total` are already stored on Product/Order.
+      razorpayOrder = await rp.orders.create({
+        amount: total,
+        currency: process.env.RAZORPAY_CURRENCY || 'INR',
+        receipt: order._id.toString(),
+        notes: { orderId: order._id.toString(), userId: req.user._id.toString() },
+      });
+
+      order.razorpay_order_id = razorpayOrder.id;
+      await order.save();
+    }
+
+    res.status(201).json({
+      success: true,
+      data: order,
+      payment: razorpayOrder
+        ? {
+            provider: 'razorpay',
+            key_id: process.env.RAZORPAY_KEY_ID,
+            order_id: razorpayOrder.id,
+            amount: razorpayOrder.amount,
+            currency: razorpayOrder.currency,
+          }
+        : null,
+      message: razorpayOrder
+        ? 'Order created — use the payment details to open Razorpay Checkout, then call POST /api/payments/verify.'
+        : 'Order created. Payment gateway is not configured on the server.',
+    });
   } catch (err) {
     next(err);
   }

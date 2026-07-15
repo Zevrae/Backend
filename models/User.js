@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import { generateRawToken, hashToken } from '../utils/tokens.js';
 const { Schema } = mongoose;
 
 const AddressSchema = new Schema(
@@ -58,6 +59,21 @@ const UserSchema = new Schema(
       default: true,
     },
 
+    // --- Email verification ---
+    is_email_verified: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    email_verification_token: {
+      type: String,
+      select: false,
+    },
+    email_verification_expires: {
+      type: Date,
+      select: false,
+    },
+
     // --- Soft delete support ---
     is_deleted: {
       type: Boolean,
@@ -98,6 +114,19 @@ UserSchema.methods.comparePassword = function (candidatePassword) {
   return bcrypt.compare(candidatePassword, this.password);
 };
 
+// Generates a fresh raw verification token, stores its hash + expiry on the
+// user, and returns the RAW token (this is what gets emailed — never store
+// the raw value in the DB).
+UserSchema.methods.generateEmailVerificationToken = function () {
+  const rawToken = generateRawToken();
+  const hours = Number(process.env.EMAIL_VERIFICATION_EXPIRES_HOURS) || 24;
+
+  this.email_verification_token = hashToken(rawToken);
+  this.email_verification_expires = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+  return rawToken;
+};
+
 UserSchema.methods.softDelete = function () {
   this.is_deleted = true;
   this.deleted_at = new Date();
@@ -108,6 +137,8 @@ UserSchema.methods.softDelete = function () {
 UserSchema.methods.toSafeObject = function () {
   const obj = this.toObject();
   delete obj.password;
+  delete obj.email_verification_token;
+  delete obj.email_verification_expires;
   return obj;
 };
 

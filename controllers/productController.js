@@ -1,4 +1,10 @@
 import Product from '../models/Product.js';
+import {
+  uploadFileToAppwrite,
+  deleteFileFromAppwrite,
+  extractFileIdFromUrl,
+  isAppwriteConfigured,
+} from '../utils/appwrite.js';
 
 // @desc    Create a product
 // @route   POST /api/products
@@ -105,6 +111,78 @@ export const restoreProduct = async (req, res, next) => {
     }
     await product.restore();
     res.json({ success: true, message: 'Product restored', data: product });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Upload one or more images for a product to Appwrite Storage
+// @route   POST /api/products/:id/images
+export const uploadProductImages = async (req, res, next) => {
+  try {
+    if (!isAppwriteConfigured()) {
+      return res.status(503).json({
+        success: false,
+        message: 'Image storage is not configured on the server (missing Appwrite env vars)',
+      });
+    }
+
+    const product = await Product.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    if (!req.files || req.files.length === 0) {
+      return res.status(400).json({ success: false, message: 'No image files provided (use the "images" field)' });
+    }
+
+    const uploadedUrls = [];
+    for (const file of req.files) {
+      const url = await uploadFileToAppwrite(file.buffer, file.originalname);
+      uploadedUrls.push(url);
+    }
+
+    product.images.push(...uploadedUrls);
+    await product.save();
+
+    res.status(201).json({ success: true, data: product });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Remove an image from a product (and delete it from Appwrite Storage)
+// @route   DELETE /api/products/:id/images
+export const deleteProductImage = async (req, res, next) => {
+  try {
+    const { imageUrl } = req.body;
+    if (!imageUrl) {
+      return res.status(400).json({ success: false, message: 'imageUrl is required' });
+    }
+
+    const product = await Product.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
+    if (!product) {
+      return res.status(404).json({ success: false, message: 'Product not found' });
+    }
+
+    const idx = product.images.indexOf(imageUrl);
+    if (idx === -1) {
+      return res.status(404).json({ success: false, message: 'Image not found on this product' });
+    }
+
+    const fileId = extractFileIdFromUrl(imageUrl);
+    if (fileId && isAppwriteConfigured()) {
+      try {
+        await deleteFileFromAppwrite(fileId);
+      } catch (e) {
+        // File may already be gone from the bucket — don't block removing it from the product
+      }
+    }
+
+    product.images.splice(idx, 1);
+    await product.save();
+
+    res.json({ success: true, data: product });
   } catch (err) {
     next(err);
   }
