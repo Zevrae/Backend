@@ -1,70 +1,91 @@
-import Collection from "../models/Collection.js";
+import Collection from '../models/Collection.js';
 
-export const createCollection = async (req, res) => {
+const slugify = (str) =>
+  str
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+
+// @desc    Create a collection (admin only)
+// @route   POST /api/collections
+export const createCollection = async (req, res, next) => {
   try {
-    const collection = await Collection.create(req.body);
+    const { name, description, status, featured } = req.body;
+    const collection = await Collection.create({
+      name,
+      slug: slugify(name),
+      description,
+      status,
+      featured,
+    });
     res.status(201).json({ success: true, data: collection });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+  } catch (err) {
+    next(err);
   }
 };
 
-export const getCollections = async (req, res) => {
+// @desc    List collections
+// @route   GET /api/collections
+export const getCollections = async (req, res, next) => {
   try {
-    const collections = await Collection.find().sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: collections });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    const filter = {};
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.featured !== undefined) filter.featured = req.query.featured === 'true';
+
+    const collections = await Collection.find(filter).sort('-created_at').lean();
+    res.json({ success: true, data: collections });
+  } catch (err) {
+    next(err);
   }
 };
 
-export const getCollectionBySlug = async (req, res) => {
+// @desc    Get a single collection by slug
+// @route   GET /api/collections/:slug
+export const getCollectionBySlug = async (req, res, next) => {
   try {
-    const collection = await Collection.findOne({ slug: req.params.slug });
+    const collection = await Collection.findOne({ slug: req.params.slug }).lean();
     if (!collection) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Collection not found" });
+      return res.status(404).json({ success: false, message: 'Collection not found' });
     }
-    res.status(200).json({ success: true, data: collection });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.json({ success: true, data: collection });
+  } catch (err) {
+    next(err);
   }
 };
 
-export const updateCollection = async (req, res) => {
+// @desc    Update a collection (admin only)
+// @route   PUT /api/collections/:id
+export const updateCollection = async (req, res, next) => {
   try {
-    const collection = await Collection.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      {
-        new: true,
-        runValidators: true,
-      },
+    const updates = { ...req.body };
+    if (updates.name) updates.slug = slugify(updates.name);
+
+    const collection = await Collection.findOneAndUpdate(
+      { _id: req.params.id, is_deleted: { $ne: true } },
+      updates,
+      { new: true, runValidators: true }
     );
     if (!collection) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Collection not found" });
+      return res.status(404).json({ success: false, message: 'Collection not found' });
     }
-    res.status(200).json({ success: true, data: collection });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    res.json({ success: true, data: collection });
+  } catch (err) {
+    next(err);
   }
 };
 
-export const deleteCollection = async (req, res) => {
+// @desc    Soft delete a collection (admin only)
+// @route   DELETE /api/collections/:id
+export const deleteCollection = async (req, res, next) => {
   try {
-    const collection = await Collection.findByIdAndDelete(req.params.id);
+    const collection = await Collection.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
     if (!collection) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Collection not found" });
+      return res.status(404).json({ success: false, message: 'Collection not found' });
     }
-    res
-      .status(200)
-      .json({ success: true, message: "Collection deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    await collection.softDelete();
+    res.json({ success: true, message: 'Collection soft-deleted' });
+  } catch (err) {
+    next(err);
   }
 };

@@ -1,14 +1,58 @@
 import Order from '../models/Order.js';
 import Cart from '../models/Cart.js';
+import Analysis from '../models/Analysis.js';
 import { getRazorpay, isRazorpayConfigured } from '../utils/razorpay.js';
+import { applyDiscountCode, DiscountError } from '../utils/discounts.js';
+import { sendEmail } from '../utils/sendEmail.js';
 
 const SHIPPING_FEE = 0; // Assumption: flat/free shipping placeholder — wire up real logic as needed
+
+// A product's demand counter crossing this many units-ordered triggers a
+// "possible delay" heads-up email to the customer who just ordered it.
+// Set DEMAND_ALERT_THRESHOLD=0 to disable.
+const DEMAND_ALERT_THRESHOLD = Number(process.env.DEMAND_ALERT_THRESHOLD) || 50;
+
+// Best-effort: bump each ordered item's demand counter and, if a product has
+// just crossed the alert threshold, let the customer know their order might
+// be delayed. Never allowed to fail checkout — errors are swallowed.
+const recordDemandAndNotify = async (order, user) => {
+  try {
+    const highDemandItems = [];
+
+    for (const item of order.items) {
+      const analysis = await Analysis.findOneAndUpdate(
+        { productId: item.product },
+        { $inc: { demandCounter: item.quantity } },
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+
+      if (DEMAND_ALERT_THRESHOLD > 0 && analysis.demandCounter >= DEMAND_ALERT_THRESHOLD) {
+        highDemandItems.push(item.name);
+      }
+    }
+
+    if (highDemandItems.length > 0) {
+      await sendEmail({
+        to: user.email,
+        subject: 'A quick note about your recent order',
+        html: `
+          <p>Hi ${user.name},</p>
+          <p>Thanks for your order! Due to high demand, the following item(s) may ship
+          with a short delay: <strong>${highDemandItems.join(', ')}</strong>.</p>
+          <p>We'll keep you updated on your order (#${order._id}) as it progresses.</p>
+        `,
+      });
+    }
+  } catch (err) {
+    console.error('recordDemandAndNotify failed (non-blocking):', err.message);
+  }
+};
 
 // @desc    Place an order from the current cart, and open a Razorpay order for payment
 // @route   POST /api/orders
 export const createOrder = async (req, res, next) => {
   try {
-    const { shipping_address } = req.body;
+    const { shipping_address, discount_code } = req.body;
     if (!shipping_address) {
       return res.status(400).json({ success: false, message: 'Shipping address is required' });
     }
@@ -19,7 +63,28 @@ export const createOrder = async (req, res, next) => {
     }
 
     const subtotal = cart.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const total = subtotal + SHIPPING_FEE;
+
+    // Apply a discount code, if provided. This consumes one use of the code
+    // immediately — if Razorpay order creation fails afterwards, the use
+    // isn't refunded automatically (no multi-document transaction here,
+    // since that requires a Mongo replica set). Acceptable tradeoff for now;
+    // revisit with transactions if this becomes a real support burden.
+    let discountAmount = 0;
+    let appliedCode = null;
+    if (discount_code) {
+      try {
+        const result = await applyDiscountCode(discount_code, subtotal);
+        discountAmount = result.discountAmount;
+        appliedCode = result.discount.code;
+      } catch (err) {
+        if (err instanceof DiscountError) {
+          return res.status(err.statusCode).json({ success: false, message: err.message });
+        }
+        throw err;
+      }
+    }
+
+    const total = Math.max(0, subtotal - discountAmount) + SHIPPING_FEE;
 
     const order = await Order.create({
       user: req.user._id,
@@ -33,6 +98,8 @@ export const createOrder = async (req, res, next) => {
       shipping_address,
       subtotal,
       shipping_fee: SHIPPING_FEE,
+      discount_code: appliedCode,
+      discount_amount: discountAmount,
       total,
     });
 
@@ -55,6 +122,9 @@ export const createOrder = async (req, res, next) => {
       order.razorpay_order_id = razorpayOrder.id;
       await order.save();
     }
+
+    // Fire-and-forget — never blocks or fails the checkout response
+    recordDemandAndNotify(order, req.user);
 
     res.status(201).json({
       success: true,

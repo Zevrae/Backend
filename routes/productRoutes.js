@@ -42,6 +42,10 @@ const router = express.Router();
  *         name: subcategory
  *         schema: { type: string }
  *       - in: query
+ *         name: collection
+ *         schema: { type: string }
+ *         description: Filter by Collection id (a product may belong to more than one)
+ *       - in: query
  *         name: status
  *         schema: { type: string, enum: [active, inactive, draft, archived] }
  *       - in: query

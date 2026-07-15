@@ -1,98 +1,93 @@
-import Discount from "../models/Discount.js";
+import Discount from '../models/Discount.js';
+import { applyDiscountCode, DiscountError } from '../utils/discounts.js';
 
-// Create a new discount
-export const createDiscount = async (req, res) => {
+// @desc    Create a new discount (admin only)
+// @route   POST /api/discounts
+export const createDiscount = async (req, res, next) => {
   try {
-    const discount = await Discount.create(req.body);
+    const { code, type, value, usage, expiry, status } = req.body;
+    const discount = await Discount.create({ code, type, value, usage, expiry, status });
     res.status(201).json({ success: true, data: discount });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+  } catch (err) {
+    next(err);
   }
 };
 
-// Get all discounts
-export const getDiscounts = async (req, res) => {
+// @desc    List all discounts (admin only)
+// @route   GET /api/discounts
+export const getDiscounts = async (req, res, next) => {
   try {
-    const discounts = await Discount.find().sort({ createdAt: -1 });
-    res.status(200).json({ success: true, data: discounts });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    const discounts = await Discount.find().sort('-created_at').lean();
+    res.json({ success: true, data: discounts });
+  } catch (err) {
+    next(err);
   }
 };
 
-export const useDiscount = async (req, res) => {
+// @desc    Get a discount by code (public — lets the cart preview a code before checkout)
+// @route   GET /api/discounts/:code
+export const getDiscountByCode = async (req, res, next) => {
   try {
-    const { code } = req.body;
-    const discount = await Discount.findOne({ code });
-
+    const discount = await Discount.findOne({ code: req.params.code.toUpperCase() }).lean();
     if (!discount) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Discount not found" });
+      return res.status(404).json({ success: false, message: 'Discount not found' });
     }
-
-    if (discount.usageLimit <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Discount usage limit reached" });
-    }
-
-    // Decrease the usage limit by 1
-    discount.usageLimit -= 1;
-    await discount.save();
-
-    res.status(200).json({ success: true, data: discount });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-}
-
-// Get a discount by code
-export const getDiscountByCode = async (req, res) => {
-  try {
-    const discount = await Discount.findOne({ code: req.params.code });
-    if (!discount) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Discount not found" });
-    }
-    res.status(200).json({ success: true, data: discount });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.json({ success: true, data: discount });
+  } catch (err) {
+    next(err);
   }
 };
 
-// Update a discount
-export const updateDiscount = async (req, res) => {
+// @desc    Validate a discount code against a subtotal and (if valid) consume one use.
+//          Checkout (orderController.createOrder) runs the exact same logic via
+//          utils/discounts.js so the two can't drift out of sync.
+// @route   POST /api/discounts/use
+export const useDiscount = async (req, res, next) => {
   try {
-    const discount = await Discount.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
-    if (!discount) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Discount not found" });
+    const { code, subtotal } = req.body;
+    if (typeof subtotal !== 'number') {
+      return res.status(400).json({ success: false, message: 'subtotal (a number) is required' });
     }
-    res.status(200).json({ success: true, data: discount });
-  } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+
+    const { discount, discountAmount } = await applyDiscountCode(code, subtotal);
+    res.json({ success: true, data: discount, discountAmount });
+  } catch (err) {
+    if (err instanceof DiscountError) {
+      return res.status(err.statusCode).json({ success: false, message: err.message });
+    }
+    next(err);
   }
 };
 
-// Delete a discount
-export const deleteDiscount = async (req, res) => {
+// @desc    Update a discount (admin only)
+// @route   PUT /api/discounts/:id
+export const updateDiscount = async (req, res, next) => {
   try {
-    const discount = await Discount.findByIdAndDelete(req.params.id);
+    const discount = await Discount.findOneAndUpdate(
+      { _id: req.params.id, is_deleted: { $ne: true } },
+      req.body,
+      { new: true, runValidators: true }
+    );
     if (!discount) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Discount not found" });
+      return res.status(404).json({ success: false, message: 'Discount not found' });
     }
-    res
-      .status(200)
-      .json({ success: true, message: "Discount deleted successfully" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.json({ success: true, data: discount });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Soft delete a discount (admin only)
+// @route   DELETE /api/discounts/:id
+export const deleteDiscount = async (req, res, next) => {
+  try {
+    const discount = await Discount.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
+    if (!discount) {
+      return res.status(404).json({ success: false, message: 'Discount not found' });
+    }
+    await discount.softDelete();
+    res.json({ success: true, message: 'Discount soft-deleted' });
+  } catch (err) {
+    next(err);
   }
 };

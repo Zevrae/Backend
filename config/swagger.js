@@ -44,6 +44,7 @@ const options = {
             description: { type: 'string' },
             category: { type: 'string' },
             subcategory: { type: 'string' },
+            collections: { type: 'array', items: { type: 'string' }, description: 'Collection ids' },
             price: { type: 'integer', example: 8999 },
             compare_price: { type: 'integer', example: 11999 },
             images: { type: 'array', items: { type: 'string' } },
@@ -62,6 +63,7 @@ const options = {
             description: { type: 'string' },
             category: { type: 'string' },
             subcategory: { type: 'string' },
+            collections: { type: 'array', items: { type: 'string' }, description: 'Collection ids' },
             price: { type: 'integer' },
             compare_price: { type: 'integer' },
             images: { type: 'array', items: { type: 'string' } },
@@ -179,6 +181,8 @@ const options = {
             shipping_address: { $ref: '#/components/schemas/ShippingAddress' },
             subtotal: { type: 'integer' },
             shipping_fee: { type: 'integer' },
+            discount_code: { type: 'string', nullable: true },
+            discount_amount: { type: 'integer' },
             total: { type: 'integer' },
             payment_status: { type: 'string', enum: ['pending', 'paid', 'failed', 'refunded'] },
             order_status: {
@@ -205,6 +209,7 @@ const options = {
           required: ['shipping_address'],
           properties: {
             shipping_address: { $ref: '#/components/schemas/ShippingAddress' },
+            discount_code: { type: 'string', example: 'SAVE20', description: 'Optional coupon code to apply' },
           },
         },
         Review: {
@@ -225,6 +230,69 @@ const options = {
             comment: { type: 'string' },
           },
         },
+        Collection: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            name: { type: 'string' },
+            slug: { type: 'string' },
+            description: { type: 'string' },
+            status: { type: 'string', enum: ['active', 'inactive'] },
+            featured: { type: 'boolean' },
+          },
+        },
+        CollectionInput: {
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string' },
+            description: { type: 'string' },
+            status: { type: 'string', enum: ['active', 'inactive'] },
+            featured: { type: 'boolean' },
+          },
+        },
+        Discount: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            code: { type: 'string', example: 'SAVE20' },
+            type: { type: 'string', enum: ['Percentage', 'Fixed Amount'] },
+            value: { type: 'number' },
+            usage: {
+              type: 'object',
+              properties: {
+                used: { type: 'integer' },
+                limit: { type: 'integer' },
+              },
+            },
+            expiry: { type: 'string', format: 'date-time' },
+            status: { type: 'string', enum: ['Active', 'Expired'] },
+          },
+        },
+        DiscountInput: {
+          type: 'object',
+          required: ['code', 'type', 'value', 'usage', 'expiry'],
+          properties: {
+            code: { type: 'string', example: 'SAVE20' },
+            type: { type: 'string', enum: ['Percentage', 'Fixed Amount'] },
+            value: { type: 'number' },
+            usage: {
+              type: 'object',
+              required: ['limit'],
+              properties: { limit: { type: 'integer' } },
+            },
+            expiry: { type: 'string', format: 'date-time' },
+            status: { type: 'string', enum: ['Active', 'Expired'] },
+          },
+        },
+        Analysis: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            productId: { type: 'string' },
+            demandCounter: { type: 'integer' },
+          },
+        },
       },
     },
   },
@@ -232,5 +300,6 @@ const options = {
 };
 
 const swaggerSpec = swaggerJSDoc(options);
+
 
 export default swaggerSpec;

@@ -14,10 +14,15 @@ const ProductSchema = new Schema(
       required: [true, "Description is required"],
       trim: true,
     },
-    collection: {
-      type: String,
-      required: [false, "Collection is required"],
-      trim: true,
+    // NOTE: named `collections` (plural, ObjectId refs) rather than `collection` —
+    // `collection` is a reserved property name on Mongoose documents (it holds
+    // the underlying MongoDB collection handle), so using it as a schema field
+    // triggers a warning and can shadow that internal property. A product can
+    // belong to multiple collections (e.g. "New Arrivals" + "Summer Sale").
+    collections: {
+      type: [Schema.Types.ObjectId],
+      ref: 'Collection',
+      default: [],
       index: true,
     },
     category: {

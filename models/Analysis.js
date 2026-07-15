@@ -1,20 +1,27 @@
-import { schema, model } from "mongoose";
+import mongoose from 'mongoose';
+const { Schema } = mongoose;
 
-const analysisSchema = new Schema(
+// Tracks a lightweight demand signal per product (currently incremented
+// whenever a unit of the product is ordered — see orderController.js).
+const AnalysisSchema = new Schema(
   {
     productId: {
       type: Schema.Types.ObjectId,
-      ref: "Product",
+      ref: 'Product',
       required: true,
+      unique: true,
+      index: true,
     },
     demandCounter: {
       type: Number,
       default: 0,
+      min: 0,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
+    versionKey: '__v',
+  }
 );
 
-const Analysis = model("Analysis", analysisSchema);
-
-export default Analysis;
+export default mongoose.model('Analysis', AnalysisSchema);

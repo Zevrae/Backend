@@ -3,7 +3,8 @@
 A complete e-commerce backend (Node.js/Express + MongoDB/Mongoose) built out
 from the `products` schema you originally provided. Since only the database
 section was included, I designed the rest of the application around it:
-auth, users, categories, cart, orders, and reviews.
+auth, users, categories, collections, discounts, cart, orders, payments,
+reviews, and demand analytics.
 
 ## Stack
 - Express (ES Modules — `"type": "module"`)
@@ -12,6 +13,7 @@ auth, users, categories, cart, orders, and reviews.
 - Razorpay payments (razorpay SDK)
 - Appwrite Storage for product images (node-appwrite + multer)
 - Swagger / OpenAPI 3.0 docs (swagger-jsdoc + swagger-ui-express)
+- Docker + PM2 (`ecosystem.config.js`) deployment configs included
 - Helmet, CORS, Morgan
 
 ## Setup
@@ -154,7 +156,7 @@ Standard CRUD, `GET` public, write ops admin-only. Supports a self-referencing
 ### Orders (`/api/orders`) — private
 | Method | Route            | Access  | Description                          |
 |--------|-------------------|---------|----------------------------------------|
-| POST   | `/`                | Private | Checkout — creates the order, empties the cart, and (if Razorpay is configured) opens a Razorpay order, returning its `payment` details for Checkout |
+| POST   | `/`                | Private | Checkout — creates the order (optionally applying a `discount_code`), empties the cart, bumps each item's demand counter, and (if Razorpay is configured) opens a Razorpay order, returning its `payment` details for Checkout |
 | GET    | `/`                | Private | List own orders (admin sees all)      |
 | GET    | `/:id`             | Owner/Admin | Get one order                     |
 | PATCH  | `/:id/status`      | Admin   | Update `order_status` / `payment_status` |
@@ -175,6 +177,48 @@ the Razorpay Dashboard under Webhooks instead.
 | POST   | `/api/products/:productId/reviews`       | Private | Create a review (one per user per product) |
 | PUT    | `/api/reviews/:id`                       | Owner   | Update own review           |
 | DELETE | `/api/reviews/:id`                       | Owner/Admin | Soft-delete a review     |
+
+### Collections (`/api/collections`)
+Curated groupings of products (e.g. "New Arrivals"), separate from
+category/subcategory. A product can belong to multiple collections via its
+`collections: [ObjectId]` field.
+
+| Method | Route            | Access  | Description                          |
+|--------|-------------------|---------|----------------------------------------|
+| GET    | `/`                | Public  | List collections (filter by `status`, `featured`) |
+| POST   | `/`                | Admin   | Create (slug auto-generated from name) |
+| GET    | `/:slug`           | Public  | Get one by slug                       |
+| PUT    | `/:id`             | Admin   | Update                                |
+| DELETE | `/:id`             | Admin   | Soft-delete                           |
+
+### Discounts (`/api/discounts`)
+Coupon codes with a percentage or fixed-amount value and a usage limit.
+Codes are stored uppercase so lookups are case-insensitive.
+
+| Method | Route            | Access  | Description                          |
+|--------|-------------------|---------|----------------------------------------|
+| GET    | `/`                | Admin   | List all discounts                    |
+| POST   | `/`                | Admin   | Create a discount                     |
+| GET    | `/:code`           | Public  | Look up a code's details (cart preview) |
+| PUT    | `/:id`             | Admin   | Update                                |
+| DELETE | `/:id`             | Admin   | Soft-delete                           |
+| POST   | `/use`             | Private | Validate a code against a subtotal and consume one use |
+
+`POST /api/orders` accepts an optional `discount_code` and runs the exact
+same validation (`utils/discounts.js`) at checkout, so `/discounts/use` and
+checkout can never disagree about whether a code is valid.
+
+### Analysis (`/api/analysis`) — admin only
+Per-product "demand counter", incremented automatically by the quantity
+ordered whenever a checkout completes (see `orderController.createOrder`).
+If a product's counter crosses `DEMAND_ALERT_THRESHOLD` (default 50), the
+customer who just ordered it gets a "possible delay due to high demand"
+email — this never blocks or fails the checkout response if it errors.
+
+| Method | Route  | Access | Description                                    |
+|--------|--------|--------|--------------------------------------------------|
+| GET    | `/`     | Admin  | List demand analytics, sorted by demand descending |
+| PUT    | `/`     | Admin  | Manually adjust a product's counter (`{ productId, incrementBy }`) — for corrections/testing; normal updates happen automatically at checkout |
 
 ## Design notes & assumptions
 - **Auth**: JWT bearer tokens (`Authorization: Bearer <token>`), roles are
@@ -203,18 +247,77 @@ the Razorpay Dashboard under Webhooks instead.
 - **Product images**: stored in Appwrite Storage (see the dedicated section
   above); the `images` field itself is still the plain `[String]` of URLs
   from your original schema, so nothing downstream needs to change.
+- **Product `collections`**: an array of Collection ObjectIds (a product can
+  be in more than one collection). Deliberately *not* named `collection` —
+  that's a reserved property name on Mongoose documents and using it as a
+  schema field caused warnings and could silently break in subtle ways.
+- **Discount usage tracking isn't transactional**: applying a code at
+  checkout consumes a use immediately; if Razorpay order creation then
+  fails, that use isn't automatically refunded (no multi-document
+  transaction, since that needs a Mongo replica set). Worth revisiting if
+  it becomes a real support issue — flagged with a comment in
+  `orderController.js`.
+
+## Deployment
+- **Docker**: `docker build -t zevrae-backend . && docker run -p 5000:5000 --env-file .env zevrae-backend`
+- **PM2**: `pm2 start ecosystem.config.js` runs the app in cluster mode
+  across all CPU cores with auto-restart; logs go to `./logs/`.
+
+## Bugs fixed in this pass
+This project was uploaded with a partially-finished Analysis/Collections/
+Discounts feature set layered on top of the working core. Fixed:
+- `models/Analysis.js` imported `{ schema, model }` from `mongoose` (not
+  real exports) and used `Schema`/`Model` inconsistently — the file
+  couldn't load at all.
+- `controllers/analysisController.js` imported from a model file that
+  didn't exist (`models/analysisModel.js` vs the real `models/Analysis.js`),
+  imported `sendEmail` as a default export when it's a named export, called
+  `findByIdAndUpdate(productId, ...)` which updates by the *Analysis
+  document's* `_id` rather than its `productId` field (so it silently did
+  nothing for real product ids), and emailed `User.email` — `User` is the
+  Mongoose *model*, not a specific user, so that was always `undefined`.
+- `routes/analysisRoutes.js`, `routes/collectionRoutes.js`, and
+  `routes/discountRoutes.js` had **no authentication at all** on admin
+  write operations — anyone could create unlimited-use 100%-off discount
+  codes or delete collections with a plain unauthenticated request. All
+  three now require `protect` + `authorize('admin')` where appropriate.
+- `discountController.useDiscount` referenced `discount.usageLimit`, a
+  field that doesn't exist on the schema (the real field is the nested
+  `usage.limit`/`usage.used`) — so usage limits, expiry, and active-status
+  were never actually enforced. Rewrote it (and factored the logic into
+  `utils/discounts.js` so checkout uses the identical validation).
+- `models/Product.js` had a field literally named `collection`, which is a
+  reserved property on Mongoose documents — renamed to `collections`
+  (an array of Collection refs, which also actually connects Product to
+  the new Collection model — previously they weren't linked at all).
+- `Dockerfile` and `ecosystem.config.js` existed but were completely empty.
+- The Discounts and Collections features existed as CRUD but weren't wired
+  into anything: checkout couldn't apply a coupon, and Products had no
+  working relationship to Collections. Both are now integrated (see the
+  Discounts and Collections sections above).
+- None of the three new route files had Swagger documentation — added,
+  consistent with the rest of the API.
 
 ## Verification performed
 - Every file syntax-checks under Node's ESM parser (`node --check`).
-- Every module/route/controller was `import`-loaded successfully.
-- The generated OpenAPI spec was inspected directly: **24 documented paths**
-  across all 8 modules, 18 reusable schemas.
+- Every module/route/controller was `import`-loaded successfully (42 files,
+  zero failures — including the previously-broken Analysis model/controller).
+- The generated OpenAPI spec was inspected directly: **32 documented paths**
+  across all 11 modules, 23 reusable schemas.
 - The real Express app (routes, middleware, Swagger UI) was booted and hit
   over HTTP: `/health` → 200, `/api-docs.json` → 200 with the full path list,
-  `/api-docs` → 200 serving the Swagger UI HTML, an unauthenticated request
-  to a protected route → 401 as expected, and a DB-backed route correctly
-  reaches Mongoose (fails with 500 only because no MongoDB is reachable in
-  this sandbox).
+  `/api-docs` → 200 serving the Swagger UI HTML, a 404 handler works, and a
+  DB-backed route correctly reaches Mongoose (fails with 500 only because no
+  MongoDB is reachable in this sandbox).
+- **Confirmed the security fix directly**: booted the app and sent
+  unauthenticated `POST /api/collections`, `POST /api/discounts`,
+  `DELETE /api/discounts/:id`, and `GET /api/analysis` — all now correctly
+  return 401 (previously would have succeeded with zero auth).
+- **Discount model logic** tested directly: code normalized to uppercase,
+  `isRedeemable()` correctly flips to `false` once `usage.used` hits
+  `usage.limit` or `expiry` passes, `calculateDiscountAmount()` computes
+  the right percentage, and a >100% percentage value is correctly rejected
+  by schema validation.
 - **Razorpay**: the actual SDK was installed and inspected to confirm its
   real API surface (`orders.create`, and that `validatePaymentVerification`
   is *not* a public static method — only `validateWebhookSignature` is, so
@@ -236,5 +339,6 @@ the Razorpay Dashboard under Webhooks instead.
 
 A full live-DB integration test wasn't possible here (MongoDB binary
 downloads are network-restricted in this sandbox), so **test the auth →
-verify → login → checkout → pay → upload-image flow end-to-end against a
-real MongoDB, Razorpay test account, and Appwrite project before deploying**.
+verify → login → checkout (with and without a discount code) → pay →
+upload-image flow end-to-end against a real MongoDB, Razorpay test account,
+and Appwrite project before deploying**.

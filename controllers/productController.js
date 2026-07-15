@@ -30,6 +30,7 @@ export const getProducts = async (req, res, next) => {
     if (req.query.category) filter.category = req.query.category;
     if (req.query.subcategory) filter.subcategory = req.query.subcategory;
     if (req.query.status) filter.status = req.query.status;
+    if (req.query.collection) filter.collections = req.query.collection;
     if (req.query.search) filter.$text = { $search: req.query.search };
 
     const sort = req.query.sort ? req.query.sort.split(',').join(' ') : '-created_at';
