@@ -1,6 +1,6 @@
-import { schema, model } from "mongoose";
+import { Schema, model } from "mongoose";
 
-const tryonSchema = new schema({
+const tryonSchema = new Schema({
   userId: {
     type: String,
     required: true,
