@@ -18,6 +18,8 @@ import paymentRoutes from "./routes/paymentRoutes.js";
 import { standaloneRouter as reviewStandaloneRoutes } from "./routes/reviewRoutes.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
+import tryonRoutes from './routes/tryonRoutes.js';
+
 
 const app = express();
 
@@ -63,6 +65,7 @@ app.use("/api/reviews", reviewStandaloneRoutes);
 app.use("/api/discounts", discountRoutes);
 app.use("/api/collections", collectionRoutes);
 app.use("/api/analysis", analysisRoutes);
+app.use('/api/tryon', tryonRoutes);
 
 // --- Error handling (must be last) ---
 app.use(notFound);
