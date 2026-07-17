@@ -24,8 +24,10 @@ import tryonRoutes from './routes/tryonRoutes.js';
 const app = express();
 
 // --- Middleware ---
-// Helmet's default CSP blocks Swagger UI's inline scripts/styles, so relax it for /api-docs only.
-app.use(helmet({ contentSecurityPolicy: false }));
+// Full Helmet defaults (including CSP) for the whole app; Swagger UI needs
+// its CSP relaxed for its inline scripts/styles, so that's applied only on
+// the /api-docs routes below instead of globally.
+app.use(helmet());
 app.use(cors());
 // The `verify` hook stashes the raw request body on req.rawBody — needed to
 // check the Razorpay webhook's HMAC signature, which must be computed over
@@ -46,8 +48,11 @@ if (process.env.NODE_ENV !== "test") {
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 // --- API docs ---
+// Swagger UI's inline scripts/styles are blocked by Helmet's default CSP,
+// so relax it only for these routes rather than for the whole app.
 app.use(
   "/api-docs",
+  helmet({ contentSecurityPolicy: false }),
   swaggerUi.serve,
   swaggerUi.setup(swaggerSpec, { customSiteTitle: "Zevrae API Docs" }),
 );

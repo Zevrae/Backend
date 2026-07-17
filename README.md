@@ -208,6 +208,25 @@ Codes are stored uppercase so lookups are case-insensitive.
 same validation (`utils/discounts.js`) at checkout, so `/discounts/use` and
 checkout can never disagree about whether a code is valid.
 
+### Virtual Try-On (`/api/tryon`) — private
+Sends a photo of the user plus a product's garment photo to an external
+try-on microservice and saves the resulting composited image against the
+current user and product.
+
+| Method | Route  | Access  | Description                                    |
+|--------|--------|---------|--------------------------------------------------|
+| GET    | `/`     | Private | List the current user's try-on history           |
+| POST   | `/`     | Private | Generate a try-on (`multipart/form-data`: `productId`, `person_image`, `cloth_image`) |
+
+Requires `TRYON_SERVICE_URL` in `.env` (base URL of the microservice; the
+route calls `${TRYON_SERVICE_URL}/api/v1/tryon`). If it's left blank, `POST
+/api/tryon` returns `503` rather than crashing the app — same pattern as
+Razorpay/Appwrite. Images are received via Multer's in-memory storage (not
+written to disk) and streamed straight through to the microservice, so
+there's nothing to clean up afterwards and it works unmodified under PM2
+cluster mode. The result is always saved against `req.user`, never a
+client-supplied user id.
+
 ### Analysis (`/api/analysis`) — admin only
 Per-product "demand counter", incremented automatically by the quantity
 ordered whenever a checkout completes (see `orderController.createOrder`).
@@ -263,7 +282,47 @@ email — this never blocks or fails the checkout response if it errors.
 - **PM2**: `pm2 start ecosystem.config.js` runs the app in cluster mode
   across all CPU cores with auto-restart; logs go to `./logs/`.
 
-## Bugs fixed in this pass
+## Bugs fixed in this pass (Virtual Try-On)
+A `tryon` module (model/controller/routes, wired into `server.js`) had been
+added on top of the otherwise-solid core and shipped broken and insecure.
+Fixed:
+- `models/Tryon.js` imported `{ schema, model }` from `mongoose` — not real
+  exports (mongoose's default export has `Schema`/`model`, not a lowercase
+  `schema`) — so the model couldn't load and any route touching it would
+  crash the process. Rewritten using the same `mongoose.Schema` pattern as
+  every other model, with proper `ObjectId` refs (`user`/`product`) to
+  `User`/`Product` instead of untyped `String` fields.
+- `routes/tryonRoutes.js` had **no authentication** — anyone could call
+  `POST /api/tryon` and, since the controller trusted a client-supplied
+  `userId` from the request body, save try-on records under *any* user's
+  id. Now requires `protect`, and the saved record always uses
+  `req.user._id`.
+- The route used `multer({ dest: 'uploads/' })` (disk storage) to a
+  directory that didn't exist anywhere in the repo — the first upload would
+  throw `ENOENT` and 500. It also left orphaned temp files on disk with no
+  cleanup, which additionally breaks under the PM2 cluster config (each
+  worker process has its own filesystem view of temp state). Switched to
+  the same in-memory Multer storage already used for product images, and
+  the controller now streams the buffers straight to the try-on
+  microservice.
+- `TRYON_SERVICE_URL`, which the controller depends on, wasn't in
+  `.env.example` and there was no handling for it being unset — the request
+  would throw partway through instead of failing cleanly. Added to
+  `.env.example` and the controller now returns `503` up front if it's
+  missing, matching the Razorpay/Appwrite "not configured" pattern.
+- No product-existence check — a nonexistent `productId` would silently
+  create a `Tryon` record instead of returning `404`.
+- No Swagger documentation and no way to list a user's own try-on history;
+  added both (`GET /api/tryon`) plus a `Tryon` schema in `config/swagger.js`.
+
+## Other fixes in this pass
+- `server.js` disabled Helmet's Content-Security-Policy **globally** while
+  a comment claimed it was only relaxed "for /api-docs" — the CSP was
+  actually off for every route in the app. Scoped the relaxed policy to
+  just the `/api-docs` routes; the rest of the app now runs under Helmet's
+  full defaults.
+
+## Bugs fixed in an earlier pass (Analysis/Collections/Discounts)
 This project was uploaded with a partially-finished Analysis/Collections/
 Discounts feature set layered on top of the working core. Fixed:
 - `models/Analysis.js` imported `{ schema, model }` from `mongoose` (not

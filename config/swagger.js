@@ -293,6 +293,16 @@ const options = {
             demandCounter: { type: 'integer' },
           },
         },
+        Tryon: {
+          type: 'object',
+          properties: {
+            _id: { type: 'string' },
+            user: { type: 'string' },
+            product: { type: 'string' },
+            imageUrl: { type: 'string' },
+            created_at: { type: 'string', format: 'date-time' },
+          },
+        },
       },
     },
   },
