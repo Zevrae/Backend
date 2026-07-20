@@ -17,6 +17,7 @@ import orderRoutes from "./routes/orderRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import { standaloneRouter as reviewStandaloneRoutes } from "./routes/reviewRoutes.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
+import normalizeIds from "./middleware/normalizeIds.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
 import tryonRoutes from './routes/tryonRoutes.js';
 
@@ -46,6 +47,8 @@ if (process.env.NODE_ENV !== "test") {
 
 // --- Health check ---
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+
+app.use(normalizeIds);
 
 // --- API docs ---
 // Swagger UI's inline scripts/styles are blocked by Helmet's default CSP,

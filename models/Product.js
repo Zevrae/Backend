@@ -93,6 +93,24 @@ const ProductSchema = new Schema(
     // Timestamps mapped to created_at / updated_at to match the provided schema
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
     versionKey: "__v",
+    toJSON: {
+      virtuals: true,
+      transform: (_doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
+    toObject: {
+      virtuals: true,
+      transform: (_doc, ret) => {
+        ret.id = ret._id.toString();
+        delete ret._id;
+        delete ret.__v;
+        return ret;
+      },
+    },
   },
 );
 

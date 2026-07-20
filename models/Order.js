@@ -57,6 +57,11 @@ const OrderSchema = new Schema(
       min: 0,
     },
     total: { type: Number, required: true, min: 0 },
+    payment_method: {
+      type: String,
+      enum: ['online', 'cod'],
+      default: 'online',
+    },
     payment_status: {
       type: String,
       enum: ['pending', 'paid', 'failed', 'refunded'],

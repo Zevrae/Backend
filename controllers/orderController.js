@@ -52,10 +52,11 @@ const recordDemandAndNotify = async (order, user) => {
 // @route   POST /api/orders
 export const createOrder = async (req, res, next) => {
   try {
-    const { shipping_address, discount_code } = req.body;
+    const { shipping_address, discount_code, payment_method } = req.body;
     if (!shipping_address) {
       return res.status(400).json({ success: false, message: 'Shipping address is required' });
     }
+    const method = payment_method === 'cod' ? 'cod' : 'online';
 
     const cart = await Cart.findOne({ user: req.user._id });
     if (!cart || cart.items.length === 0) {
@@ -101,6 +102,7 @@ export const createOrder = async (req, res, next) => {
       discount_code: appliedCode,
       discount_amount: discountAmount,
       total,
+      payment_method: method,
     });
 
     // Empty the cart once the order record exists (payment is handled separately)
@@ -108,7 +110,7 @@ export const createOrder = async (req, res, next) => {
     await cart.save();
 
     let razorpayOrder = null;
-    if (isRazorpayConfigured()) {
+    if (method === 'online' && isRazorpayConfigured()) {
       const rp = getRazorpay();
       // Amount is in the smallest currency unit (paise for INR), matching
       // how `price`/`total` are already stored on Product/Order.
@@ -140,6 +142,8 @@ export const createOrder = async (req, res, next) => {
         : null,
       message: razorpayOrder
         ? 'Order created — use the payment details to open Razorpay Checkout, then call POST /api/payments/verify.'
+        : method === 'cod'
+        ? 'Order created — cash on delivery, no online payment required.'
         : 'Order created. Payment gateway is not configured on the server.',
     });
   } catch (err) {
@@ -158,9 +162,10 @@ export const getOrders = async (req, res, next) => {
     const filter = req.user.role === 'admin' ? {} : { user: req.user._id };
     if (req.query.order_status) filter.order_status = req.query.order_status;
     if (req.query.payment_status) filter.payment_status = req.query.payment_status;
+    if (req.query.payment_method) filter.payment_method = req.query.payment_method;
 
     const [items, total] = await Promise.all([
-      Order.find(filter).sort('-created_at').skip(skip).limit(limit).lean(),
+      Order.find(filter).populate('user', 'name email phone').sort('-created_at').skip(skip).limit(limit).lean(),
       Order.countDocuments(filter),
     ]);
 
@@ -178,7 +183,7 @@ export const getOrders = async (req, res, next) => {
 // @route   GET /api/orders/:id
 export const getOrderById = async (req, res, next) => {
   try {
-    const order = await Order.findById(req.params.id).lean();
+    const order = await Order.findById(req.params.id).populate('user', 'name email phone').lean();
     if (!order) return res.status(404).json({ success: false, message: 'Order not found' });
 
     if (req.user.role !== 'admin' && order.user.toString() !== req.user._id.toString()) {
