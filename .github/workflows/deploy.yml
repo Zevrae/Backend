@@ -1,52 +1,58 @@
-name: CI/CD Pipeline for Zevrae Backend Deployment
+name: CI/CD Deploy Zevrae Backend to EC2
 
 on:
   push:
     branches:
-      - main # adjust branch as needed
+      - main # adjust branch if needed
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Fetch latest code
+      # Step 1: Fetch latest commit from GitHub
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Step 2: SSH into EC2 and run deployment commands
+      # Step 2: SSH into EC2 and perform deployment
       - name: Deploy to EC2
-        uses: appleboy/ssh-action@v0.1.10
+        uses: appleboy/ssh-action@v0.1.7
         with:
-          host: ${{ secrets.SSH_HOST }} # EC2 public IP or DNS
+          host: ${{ secrets.SSH_HOST }} # EC2 public IP/DNS
           username: ubuntu
-          key: ${{ secrets.SSH_KEY }} # private SSH key stored in secrets
+          key: ${{ secrets.SSH_KEY }} # private SSH key stored in GitHub Secrets
           script: |
-            echo "Updating the remote server..."
+            # 1. Navigate to backend project root
+            cd ~/Backend
+
+            # 2. Pull latest code from GitHub
             git pull origin main
 
-            echo "Stopping and removing all Docker containers..."
+            # 3. Stop and remove all Docker containers
             sudo docker rm -f $(sudo docker ps -aq) || true
 
-            echo "Building new Docker image..."
+            # 4. Aggressive cleanup (optional)
+            sudo docker system prune -af
+            sudo docker volume prune -f
+
+            # 5. Build new Docker image
             sudo docker build -t zevraebackend .
 
-            echo "Starting new container in background..."
-            # Run with restart policy (preferred)
+            # 6. Run container with restart policy
             sudo docker run -d --restart unless-stopped -p 3000:3000 --name my-backend zevraebackend
 
-            echo "Reinstalling existing certificate..."
+            # 7. Reinstall existing certificate
             sudo certbot --nginx -d api.zevrae.com --reinstall --non-interactive --agree-tos
 
-            echo "Testing and reloading Nginx..."
+            # 8. Test and reload Nginx
             sudo nginx -t
             sudo systemctl reload nginx
 
-            echo "Verifying Docker container..."
+            # 9. Verify Docker container
             sudo docker ps
 
-            echo "Verifying Nginx status..."
+            # 10. Verify Nginx status
             sudo systemctl status nginx --no-pager
 
-            echo "Verifying HTTPS endpoint..."
+            # 11. Verify HTTPS endpoint
             curl -Ik https://api.zevrae.com/api-docs
