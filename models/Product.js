@@ -21,7 +21,7 @@ const ProductSchema = new Schema(
     // belong to multiple collections (e.g. "New Arrivals" + "Summer Sale").
     collections: {
       type: [Schema.Types.ObjectId],
-      ref: 'Collection',
+      ref: "Collection",
       default: [],
       index: true,
     },
@@ -77,6 +77,18 @@ const ProductSchema = new Schema(
       default: "draft",
       index: true,
     },
+    stock_quantity: {
+      type: Number,
+      inStock: Boolean,
+      required: [true, "Stock quantity is required"],
+      min: [0, "Stock quantity cannot be negative"],
+      validate: {
+        validator: Number.isInteger,
+        message:
+          "Stock quantity must be an integer (store as whole number of items)",
+      },
+    },
+    // Additional fields can be added here as needed
 
     // --- Soft delete support ---
     is_deleted: {

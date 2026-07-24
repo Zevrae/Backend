@@ -1,0 +1,50 @@
+name: CI/CD Pipeline for Zevrae Backend Deployment
+
+on:
+  push:
+    branches:
+      - main # adjust branch as needed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ubuntu
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            echo "Stopping and removing all Docker containers..."
+            sudo docker rm -f $(sudo docker ps -aq) || true
+
+            echo "Building new Docker image..."
+            sudo docker build -t zevraebackend .
+
+            echo "Starting new container in background..."
+            # First run (basic detached)
+            sudo docker run -d -p 3000:3000 --name my-backend zevraebackend
+            # Second run (with restart policy)
+            sudo docker rm -f my-backend || true
+            sudo docker run -d --restart unless-stopped -p 3000:3000 --name my-backend zevraebackend
+
+            echo "Reinstalling existing certificate..."
+            sudo certbot --nginx -d api.zevrae.com --reinstall --non-interactive --agree-tos
+
+            echo "Testing and reloading Nginx..."
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "Verifying Docker container..."
+            sudo docker ps
+
+            echo "Verifying Nginx status..."
+            sudo systemctl status nginx --no-pager
+
+            echo "Verifying HTTPS endpoint..."
+            curl -Ik https://api.zevrae.com/api-docs
