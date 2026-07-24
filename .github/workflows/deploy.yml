@@ -10,15 +10,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      # Step 1: Fetch latest code
+      - name: Checkout repository
         uses: actions/checkout@v3
 
+      # Step 2: SSH into EC2 and run deployment commands
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v0.1.10
         with:
-          host: ${{ secrets.SSH_HOST }}
+          host: ${{ secrets.SSH_HOST }} # EC2 public IP or DNS
           username: ubuntu
-          key: ${{ secrets.SSH_KEY }}
+          key: ${{ secrets.SSH_KEY }} # private SSH key stored in secrets
           script: |
             echo "Stopping and removing all Docker containers..."
             sudo docker rm -f $(sudo docker ps -aq) || true
@@ -27,10 +29,7 @@ jobs:
             sudo docker build -t zevraebackend .
 
             echo "Starting new container in background..."
-            # First run (basic detached)
-            sudo docker run -d -p 3000:3000 --name my-backend zevraebackend
-            # Second run (with restart policy)
-            sudo docker rm -f my-backend || true
+            # Run with restart policy (preferred)
             sudo docker run -d --restart unless-stopped -p 3000:3000 --name my-backend zevraebackend
 
             echo "Reinstalling existing certificate..."
