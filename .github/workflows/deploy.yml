@@ -22,6 +22,9 @@ jobs:
           username: ubuntu
           key: ${{ secrets.SSH_KEY }} # private SSH key stored in secrets
           script: |
+            echo "Updating the remote server..."
+            git pull origin main
+
             echo "Stopping and removing all Docker containers..."
             sudo docker rm -f $(sudo docker ps -aq) || true
 
