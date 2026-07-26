@@ -50,8 +50,8 @@ router.route('/').get(protect, authorize('admin'), getDiscounts).post(protect, a
  * @swagger
  * /discounts/use:
  *   post:
- *     summary: Validate a discount code against a subtotal and consume one use
- *     description: Requires login since a use is consumed immediately on success — intended for the "apply coupon" step of checkout.
+ *     summary: Validate a discount code against a subtotal and preview the discount amount
+ *     description: Does not consume a use — that happens once, automatically, when the order is actually placed via POST /orders with the same code. Intended for the "apply coupon" step of checkout, where you want to validate/preview without spending a redemption on a cart that might be abandoned.
  *     tags: [Discounts]
  *     security:
  *       - bearerAuth: []

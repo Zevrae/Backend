@@ -38,9 +38,11 @@ export const getDiscountByCode = async (req, res, next) => {
   }
 };
 
-// @desc    Validate a discount code against a subtotal and (if valid) consume one use.
-//          Checkout (orderController.createOrder) runs the exact same logic via
-//          utils/discounts.js so the two can't drift out of sync.
+// @desc    Validate a discount code against a subtotal and preview the discount
+//          amount. Does NOT consume a use — that only happens once, at the
+//          moment an order is actually placed (orderController.createOrder).
+//          This lets the "Apply coupon" step in checkout validate/preview
+//          without burning a redemption on an abandoned cart.
 // @route   POST /api/discounts/use
 export const useDiscount = async (req, res, next) => {
   try {
@@ -49,7 +51,7 @@ export const useDiscount = async (req, res, next) => {
       return res.status(400).json({ success: false, message: 'subtotal (a number) is required' });
     }
 
-    const { discount, discountAmount } = await applyDiscountCode(code, subtotal);
+    const { discount, discountAmount } = await applyDiscountCode(code, subtotal, { consume: false });
     res.json({ success: true, data: discount, discountAmount });
   } catch (err) {
     if (err instanceof DiscountError) {

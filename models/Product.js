@@ -48,10 +48,9 @@ const ProductSchema = new Schema(
     },
     compare_price: {
       type: Number,
-      required: [true, "Compare price is required"],
       min: [0, "Compare price cannot be negative"],
       validate: {
-        validator: Number.isInteger,
+        validator: (v) => v === undefined || v === null || Number.isInteger(v),
         message:
           "Compare price must be an integer (store as smallest currency unit)",
       },
@@ -77,16 +76,28 @@ const ProductSchema = new Schema(
       default: "draft",
       index: true,
     },
-    stock_quantity: {
-      type: Number,
-      inStock: Boolean,
-      required: [true, "Stock quantity is required"],
-      min: [0, "Stock quantity cannot be negative"],
-      validate: {
-        validator: Number.isInteger,
-        message:
-          "Stock quantity must be an integer (store as whole number of items)",
+    // Per-size inventory — e.g. { S: 4, M: 10, L: 0 }. `stock_quantity`
+    // below is auto-derived from this as the total across all sizes, so
+    // API consumers that just want "is there any stock at all" don't need
+    // to sum the map themselves.
+    size_stock: {
+      type: Map,
+      of: {
+        type: Number,
+        min: [0, "Stock quantity cannot be negative"],
+        validate: {
+          validator: Number.isInteger,
+          message: "Stock quantity must be a whole number",
+        },
       },
+      default: {},
+    },
+    stock_quantity: {
+      // Derived automatically from size_stock in the pre-validate hook below —
+      // not meant to be set directly by API callers.
+      type: Number,
+      default: 0,
+      min: [0, "Stock quantity cannot be negative"],
     },
     // Additional fields can be added here as needed
 
@@ -107,6 +118,7 @@ const ProductSchema = new Schema(
     versionKey: "__v",
     toJSON: {
       virtuals: true,
+      flattenMaps: true,
       transform: (_doc, ret) => {
         ret.id = ret._id.toString();
         delete ret._id;
@@ -116,6 +128,7 @@ const ProductSchema = new Schema(
     },
     toObject: {
       virtuals: true,
+      flattenMaps: true,
       transform: (_doc, ret) => {
         ret.id = ret._id.toString();
         delete ret._id;
@@ -125,6 +138,34 @@ const ProductSchema = new Schema(
     },
   },
 );
+
+// Keep stock_quantity (the "any stock at all" total) in sync with size_stock
+// whenever a document is saved directly (create/save — .lean() reads are
+// unaffected since there's no document to hook into, but size_stock is
+// already the source of truth for those callers too).
+ProductSchema.pre("validate", function deriveStockQuantity(next) {
+  if (this.size_stock && this.size_stock.size >= 0) {
+    let total = 0;
+    for (const qty of this.size_stock.values()) {
+      total += qty || 0;
+    }
+    this.stock_quantity = total;
+  }
+  next();
+});
+
+// findOneAndUpdate (used by updateProduct) bypasses document middleware, so
+// mirror the derivation here for updates that touch size_stock.
+ProductSchema.pre("findOneAndUpdate", function deriveStockQuantityOnUpdate(next) {
+  const update = this.getUpdate();
+  if (update && update.size_stock !== undefined) {
+    const entries = update.size_stock instanceof Map
+      ? Array.from(update.size_stock.values())
+      : Object.values(update.size_stock || {});
+    update.stock_quantity = entries.reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+  }
+  next();
+});
 
 // Compound index for common filtered listing queries (category + subcategory + status)
 ProductSchema.index({ category: 1, subcategory: 1, status: 1 });
