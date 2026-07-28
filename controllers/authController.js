@@ -2,6 +2,11 @@ import User from "../models/User.js";
 import generateToken from "../utils/generateToken.js";
 import { hashToken } from "../utils/tokens.js";
 import { sendEmail } from "../utils/sendEmail.js";
+import { OAuth2Client } from "google-auth-library";
+
+const googleClient = process.env.GOOGLE_CLIENT_ID
+  ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
+  : null;
 
 const buildVerificationUrl = (rawToken) => {
   const base = process.env.API_BASE_URL;
@@ -165,6 +170,77 @@ export const login = async (req, res, next) => {
 export const getMe = async (req, res, next) => {
   try {
     res.json({ success: true, data: req.user.toSafeObject() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Sign in (or register, on first use) with a Google ID token
+// @route   POST /api/auth/google
+export const googleLogin = async (req, res, next) => {
+  try {
+    if (!googleClient) {
+      return res.status(503).json({
+        success: false,
+        message: "Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)",
+      });
+    }
+
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ success: false, message: "Google credential is required" });
+    }
+
+    // Verifies the token's signature, audience, issuer and expiry against
+    // Google's public keys — this is what actually proves the request came
+    // from Google and wasn't forged by the client.
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch (err) {
+      return res.status(401).json({ success: false, message: "Invalid or expired Google credential" });
+    }
+
+    if (!payload?.email) {
+      return res.status(401).json({ success: false, message: "Google account has no email on file" });
+    }
+    if (payload.email_verified === false) {
+      return res.status(401).json({ success: false, message: "Google email is not verified" });
+    }
+
+    const email = payload.email.toLowerCase();
+    let user = await User.findOne({ google_id: payload.sub });
+
+    if (!user) {
+      // Not linked yet — if an account already exists with this email
+      // (e.g. they originally signed up with a password), link Google to
+      // it rather than creating a duplicate account for the same person.
+      user = await User.findOne({ email });
+      if (user) {
+        user.google_id = payload.sub;
+        user.is_email_verified = true; // Google already verified it
+        await user.save({ validateBeforeSave: false });
+      } else {
+        user = await User.create({
+          name: payload.name || email.split("@")[0],
+          email,
+          google_id: payload.sub,
+          auth_provider: "google",
+          is_email_verified: true,
+        });
+      }
+    }
+
+    if (!user.is_active) {
+      return res.status(403).json({ success: false, message: "Account is deactivated" });
+    }
+
+    const token = generateToken(user._id);
+    res.json({ success: true, token, data: user.toSafeObject() });
   } catch (err) {
     next(err);
   }

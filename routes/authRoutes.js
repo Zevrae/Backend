@@ -1,5 +1,5 @@
 import express from 'express';
-import { register, login, getMe, verifyEmail, resendVerification } from '../controllers/authController.js';
+import { register, login, googleLogin, getMe, verifyEmail, resendVerification } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -125,6 +125,50 @@ router.post('/resend-verification', resendVerification);
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/login', login);
+
+/**
+ * @swagger
+ * /auth/google:
+ *   post:
+ *     summary: Sign in (or register, on first use) with a Google ID token
+ *     description: >
+ *       Verifies the Google ID token (the `credential` returned by Google
+ *       Identity Services on the frontend) server-side against Google's
+ *       public keys. If an account already exists with the same email, it's
+ *       linked to this Google account rather than creating a duplicate. New
+ *       accounts are created pre-verified (Google already confirmed the
+ *       email) and have no password.
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [credential]
+ *             properties:
+ *               credential: { type: string, description: "The Google ID token (JWT) from Google Identity Services" }
+ *     responses:
+ *       200:
+ *         description: Signed in — same shape as POST /auth/login
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success: { type: boolean }
+ *                 token: { type: string }
+ *                 data: { $ref: '#/components/schemas/User' }
+ *       400:
+ *         description: Missing credential
+ *       401:
+ *         description: Invalid/expired credential, or Google email not verified
+ *       403:
+ *         description: Account is deactivated
+ *       503:
+ *         description: Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)
+ */
+router.post('/google', googleLogin);
 
 /**
  * @swagger

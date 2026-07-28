@@ -55,6 +55,14 @@ const ProductSchema = new Schema(
           "Compare price must be an integer (store as smallest currency unit)",
       },
     },
+    // A manual discount percentage override (e.g. for flash sales),
+    // independent of compare_price — storefronts can show whichever of the
+    // two makes sense, or both.
+    discount: {
+      type: Number,
+      min: [0, "Discount cannot be negative"],
+      max: [100, "Discount cannot exceed 100%"],
+    },
     images: {
       type: [String],
       default: [],

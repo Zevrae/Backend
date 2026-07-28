@@ -36,9 +36,25 @@ const UserSchema = new Schema(
     },
     password: {
       type: String,
-      required: [true, 'Password is required'],
+      // Only local (email/password) accounts need a password — Google
+      // accounts authenticate via a verified Google ID token instead.
+      required: [
+        function () { return this.auth_provider === 'local'; },
+        'Password is required',
+      ],
       minlength: [8, 'Password must be at least 8 characters'],
       select: false,
+    },
+    auth_provider: {
+      type: String,
+      enum: ['local', 'google'],
+      default: 'local',
+    },
+    google_id: {
+      type: String,
+      unique: true,
+      sparse: true, // allows many docs with no google_id at all
+      index: true,
     },
     role: {
       type: String,
@@ -111,6 +127,7 @@ UserSchema.pre('findOne', excludeSoftDeleted);
 UserSchema.pre('countDocuments', excludeSoftDeleted);
 
 UserSchema.methods.comparePassword = function (candidatePassword) {
+  if (!this.password) return Promise.resolve(false);
   return bcrypt.compare(candidatePassword, this.password);
 };
 
