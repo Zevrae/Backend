@@ -22,6 +22,12 @@ const TryonSchema = new Schema(
       type: String,
       required: true,
     },
+    // Which of the product's garment images (by URL) were used as input for
+    // this generation — useful for showing "what was combined" in history.
+    clothImageUrls: {
+      type: [String],
+      default: [],
+    },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

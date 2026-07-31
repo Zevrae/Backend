@@ -1,6 +1,7 @@
 import express from 'express';
 import { createReview, getReviewsForProduct, updateReview, deleteReview } from '../controllers/reviewController.js';
 import { protect } from '../middleware/auth.js';
+import { uploadImages } from '../middleware/upload.js';
 
 // mergeParams lets this router read :productId when mounted inside productRoutes
 const router = express.Router({ mergeParams: true });
@@ -33,7 +34,7 @@ const router = express.Router({ mergeParams: true });
  *       200:
  *         description: Paginated reviews with a rating summary
  *   post:
- *     summary: Create a review for a product (one per user per product)
+ *     summary: Create a review for a product (one per user per product), optionally with photos
  *     tags: [Reviews]
  *     security:
  *       - bearerAuth: []
@@ -45,14 +46,22 @@ const router = express.Router({ mergeParams: true });
  *     requestBody:
  *       required: true
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/ReviewInput'
+ *             type: object
+ *             required: [rating]
+ *             properties:
+ *               rating: { type: integer, minimum: 1, maximum: 5 }
+ *               comment: { type: string }
+ *               images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *                 description: Up to 5 photos, uploaded to Appwrite Storage
  *     responses:
  *       201:
  *         description: Review created
  */
-router.route('/').get(getReviewsForProduct).post(protect, createReview);
+router.route('/').get(getReviewsForProduct).post(protect, uploadImages, createReview);
 
 // Mounted at /api/products/:productId/reviews
 export default router;
@@ -64,7 +73,7 @@ const standaloneRouter = express.Router();
  * @swagger
  * /reviews/{id}:
  *   put:
- *     summary: Update your own review
+ *     summary: Update your own review (rating, comment, and/or photos — new photos replace the old set)
  *     tags: [Reviews]
  *     security:
  *       - bearerAuth: []
@@ -75,9 +84,15 @@ const standaloneRouter = express.Router();
  *         schema: { type: string }
  *     requestBody:
  *       content:
- *         application/json:
+ *         multipart/form-data:
  *           schema:
- *             $ref: '#/components/schemas/ReviewInput'
+ *             type: object
+ *             properties:
+ *               rating: { type: integer, minimum: 1, maximum: 5 }
+ *               comment: { type: string }
+ *               images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
  *     responses:
  *       200:
  *         description: Review updated
@@ -99,7 +114,7 @@ const standaloneRouter = express.Router();
  *       404:
  *         description: Review not found
  */
-standaloneRouter.put('/:id', protect, updateReview);
+standaloneRouter.put('/:id', protect, uploadImages, updateReview);
 standaloneRouter.delete('/:id', protect, deleteReview);
 
 export { standaloneRouter };

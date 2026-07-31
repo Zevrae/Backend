@@ -20,6 +20,7 @@ import { notFound, errorHandler } from "./middleware/errorHandler.js";
 import normalizeIds from "./middleware/normalizeIds.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
 import tryonRoutes from './routes/tryonRoutes.js';
+import imageRoutes from './routes/imageRoutes.js';
 
 
 const app = express();
@@ -74,6 +75,7 @@ app.use("/api/discounts", discountRoutes);
 app.use("/api/collections", collectionRoutes);
 app.use("/api/analysis", analysisRoutes);
 app.use('/api/tryon', tryonRoutes);
+app.use('/api/images', imageRoutes);
 
 // --- Error handling (must be last) ---
 app.use(notFound);

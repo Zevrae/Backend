@@ -33,12 +33,17 @@ router.use(protect);
  *       200:
  *         description: Paginated list of the user's saved try-on results
  *   post:
- *     summary: Generate a virtual try-on image
+ *     summary: Generate a virtual try-on image from one or more garments
  *     description: >
- *       Uploads a photo of the user and a product's garment photo
- *       (multipart/form-data) to the external try-on microservice
- *       (TRYON_SERVICE_URL) and saves the resulting image URL against the
- *       current user and the given product.
+ *       Uploads a photo of the user (multipart/form-data) along with one or
+ *       more garment images to the external try-on microservice
+ *       (TRYON_SERVICE_URL), and saves the resulting image URL against the
+ *       current user and the given product. Garment images can be supplied
+ *       either as directly-uploaded files ("cloth_images") or by referencing
+ *       existing product image URLs ("clothImageUrls", a JSON-stringified
+ *       array) — the server fetches those from Appwrite itself so the
+ *       browser never has to, sidestepping Appwrite's CORS restrictions.
+ *       At least one garment (file or URL) is required; up to 5 total.
  *     tags: [TryOn]
  *     security:
  *       - bearerAuth: []
@@ -48,11 +53,16 @@ router.use(protect);
  *         multipart/form-data:
  *           schema:
  *             type: object
- *             required: [productId, person_image, cloth_image]
+ *             required: [productId, person_image]
  *             properties:
  *               productId: { type: string }
  *               person_image: { type: string, format: binary }
- *               cloth_image: { type: string, format: binary }
+ *               cloth_images:
+ *                 type: array
+ *                 items: { type: string, format: binary }
+ *               clothImageUrls:
+ *                 type: string
+ *                 description: JSON-stringified array of product image URLs to use as garments
  *     responses:
  *       201:
  *         description: Try-on generated and saved
@@ -64,7 +74,7 @@ router.use(protect);
  *                 success: { type: boolean }
  *                 data: { $ref: '#/components/schemas/Tryon' }
  *       400:
- *         description: Missing productId or image files
+ *         description: Missing productId, person_image, or at least one garment image
  *       404:
  *         description: Product not found
  *       502:

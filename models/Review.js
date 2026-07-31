@@ -26,6 +26,16 @@ const ReviewSchema = new Schema(
       trim: true,
       maxlength: 2000,
     },
+    // Public Appwrite view URLs for any photos the reviewer attached
+    // (e.g. photos of themselves wearing/using the product).
+    images: {
+      type: [String],
+      default: [],
+      validate: {
+        validator: (arr) => Array.isArray(arr) && arr.length <= 5,
+        message: "A review can have at most 5 images",
+      },
+    },
     is_deleted: {
       type: Boolean,
       default: false,

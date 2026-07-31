@@ -20,15 +20,20 @@ export const uploadImages = multer({
   fileFilter,
 }).array('images', 5);
 
-// Accepts exactly one "person_image" and one "cloth_image" file, 5MB each,
-// kept in memory so they can be streamed straight to the try-on microservice
-// without ever touching local disk (important in PM2 cluster mode, where
-// disk-based temp files aren't shared/cleaned up across worker processes).
+// Maximum number of garment images that can be tried on in one request —
+// mirrors MAX_CLOTH_IMAGES in the Tryon microservice.
+export const MAX_TRYON_CLOTH_IMAGES = 5;
+
+// Accepts exactly one "person_image" and up to MAX_TRYON_CLOTH_IMAGES
+// "cloth_images" files, 5MB each, kept in memory so they can be streamed
+// straight to the try-on microservice without ever touching local disk
+// (important in PM2 cluster mode, where disk-based temp files aren't
+// shared/cleaned up across worker processes).
 export const uploadTryonImages = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 2 },
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 + MAX_TRYON_CLOTH_IMAGES },
   fileFilter,
 }).fields([
   { name: 'person_image', maxCount: 1 },
-  { name: 'cloth_image', maxCount: 1 },
+  { name: 'cloth_images', maxCount: MAX_TRYON_CLOTH_IMAGES },
 ]);

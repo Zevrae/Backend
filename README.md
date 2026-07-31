@@ -174,9 +174,14 @@ the Razorpay Dashboard under Webhooks instead.
 | Method | Route                                  | Access  | Description               |
 |--------|------------------------------------------|---------|-----------------------------|
 | GET    | `/api/products/:productId/reviews`       | Public  | List reviews + average rating |
-| POST   | `/api/products/:productId/reviews`       | Private | Create a review (one per user per product) |
-| PUT    | `/api/reviews/:id`                       | Owner   | Update own review           |
+| POST   | `/api/products/:productId/reviews`       | Private | Create a review (one per user per product; `multipart/form-data` with optional `images` files, up to 5, uploaded to Appwrite Storage) |
+| PUT    | `/api/reviews/:id`                       | Owner   | Update own review (new `images` files replace the old set) |
 | DELETE | `/api/reviews/:id`                       | Owner/Admin | Soft-delete a review     |
+
+### Images (`/api/images`)
+| Method | Route      | Access | Description |
+|--------|-----------|--------|--------------|
+| GET    | `/proxy?url=` | Public | Streams an Appwrite-hosted file's bytes through the backend, since Appwrite's CORS policy blocks the frontend from `fetch()`-ing it directly. `url` must be a file on this app's own Appwrite endpoint. |
 
 ### Collections (`/api/collections`)
 Curated groupings of products (e.g. "New Arrivals"), separate from
@@ -216,7 +221,7 @@ current user and product.
 | Method | Route  | Access  | Description                                    |
 |--------|--------|---------|--------------------------------------------------|
 | GET    | `/`     | Private | List the current user's try-on history           |
-| POST   | `/`     | Private | Generate a try-on (`multipart/form-data`: `productId`, `person_image`, `cloth_image`) |
+| POST   | `/`     | Private | Generate a try-on (`multipart/form-data`: `productId`, `person_image`, plus one or more garments via `cloth_images` file(s) and/or a `clothImageUrls` JSON array of existing product image URLs) |
 
 Requires `TRYON_SERVICE_URL` in `.env` (base URL of the microservice; the
 route calls `${TRYON_SERVICE_URL}/api/v1/tryon`). If it's left blank, `POST
