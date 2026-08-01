@@ -2,7 +2,7 @@ import multer from 'multer';
 
 const storage = multer.memoryStorage();
 
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif'];
 
 const fileFilter = (req, file, cb) => {
   if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
@@ -12,11 +12,17 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// Accepts up to 5 files under the "images" form field, 5MB each, kept in
-// memory so they can be streamed straight to Appwrite without touching disk.
+// 5MB was rejecting ordinary photos straight off modern phone cameras
+// (12MP+ JPEGs routinely land in the 8-15MB range) — this is very likely
+// why uploads "worked for some people and not others": it depended on
+// which phone/camera took the photo, not anything the person did wrong.
+const MAX_PRODUCT_IMAGE_SIZE_MB = 15;
+
+// Accepts up to 5 files under the "images" form field, kept in memory so
+// they can be streamed straight to Appwrite without touching disk.
 export const uploadImages = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 5 },
+  limits: { fileSize: MAX_PRODUCT_IMAGE_SIZE_MB * 1024 * 1024, files: 5 },
   fileFilter,
 }).array('images', 5);
 

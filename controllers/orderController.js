@@ -5,7 +5,11 @@ import { getRazorpay, isRazorpayConfigured } from "../utils/razorpay.js";
 import { applyDiscountCode, DiscountError } from "../utils/discounts.js";
 import { sendEmail } from "../utils/sendEmail.js";
 
-const SHIPPING_FEE = 0; // Assumption: flat/free shipping placeholder — wire up real logic as needed
+// Flat shipping fee (in rupees) for orders under the free-shipping
+// threshold. Matches the frontend's checkout summary exactly — keep these
+// in sync if either changes.
+const SHIPPING_FEE = 19;
+const FREE_SHIPPING_THRESHOLD = 1000;
 
 // A product's demand counter crossing this many units-ordered triggers a
 // "possible delay" heads-up email to the customer who just ordered it.
@@ -95,8 +99,16 @@ export const createOrder = async (req, res, next) => {
       }
     }
 
-    const midTotal = Math.max(0, subtotal - discountAmount) * 100;
-    const total = midTotal > 100000 ? midTotal + 1900 : midTotal;
+    // Everything on the Order document — subtotal, shipping_fee,
+    // discount_amount, total — is stored in rupees, matching Product.price
+    // and every other money value shown in the app. Razorpay is the only
+    // API that wants the smallest currency unit (paise for INR); that
+    // conversion happens once, right when we call it below, and nowhere
+    // else. Mixing units between here and there was the root cause of the
+    // "order total is 100x too big" bug.
+    const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const total = Math.max(0, subtotal - discountAmount + shippingFee);
+
     const order = await Order.create({
       user: req.user._id,
       items: cart.items.map((item) => ({
@@ -108,7 +120,7 @@ export const createOrder = async (req, res, next) => {
       })),
       shipping_address,
       subtotal,
-      shipping_fee: SHIPPING_FEE,
+      shipping_fee: shippingFee,
       discount_code: appliedCode,
       discount_amount: discountAmount,
       total,
@@ -122,10 +134,11 @@ export const createOrder = async (req, res, next) => {
     let razorpayOrder = null;
     if (method === "online" && isRazorpayConfigured()) {
       const rp = getRazorpay();
-      // Amount is in the smallest currency unit (paise for INR), matching
-      // how `price`/`total` are already stored on Product/Order.
+      // Razorpay requires the amount in the smallest currency unit (paise
+      // for INR) — this is the ONLY place that conversion should happen.
+      const amountInPaise = Math.round(total * 100);
       razorpayOrder = await rp.orders.create({
-        amount: total,
+        amount: amountInPaise,
         currency: process.env.RAZORPAY_CURRENCY || "INR",
         receipt: order._id.toString(),
         notes: {

@@ -43,7 +43,7 @@ const ProductSchema = new Schema(
       min: [0, "Price cannot be negative"],
       validate: {
         validator: Number.isInteger,
-        message: "Price must be an integer (store as smallest currency unit)",
+        message: "Price must be a whole number of rupees (no decimals/paise)",
       },
     },
     compare_price: {
@@ -52,7 +52,7 @@ const ProductSchema = new Schema(
       validate: {
         validator: (v) => v === undefined || v === null || Number.isInteger(v),
         message:
-          "Compare price must be an integer (store as smallest currency unit)",
+          "Compare price must be a whole number of rupees (no decimals/paise)",
       },
     },
     // A manual discount percentage override (e.g. for flash sales),

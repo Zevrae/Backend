@@ -24,7 +24,9 @@ export function errorHandler(err, req, res, next) {
   // Multer file upload errors (bad file type, too large, too many files)
   if (err.name === 'MulterError') {
     statusCode = 400;
-    message = err.message;
+    message = err.code === 'LIMIT_FILE_SIZE'
+      ? 'One or more files are too large. Each image must be under 15MB.'
+      : err.message;
   }
 
   // Mongoose duplicate key error
