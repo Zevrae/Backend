@@ -20,7 +20,17 @@ const TryonSchema = new Schema(
     },
     imageUrl: {
       type: String,
-      required: true,
+      // No longer required at creation time — a job starts as 'pending'
+      // with no image yet, and gets one once generation finishes.
+    },
+    status: {
+      type: String,
+      enum: ["pending", "completed", "failed"],
+      default: "pending",
+      index: true,
+    },
+    error: {
+      type: String,
     },
     // Which of the product's garment images (by URL) were used as input for
     // this generation — useful for showing "what was combined" in history.

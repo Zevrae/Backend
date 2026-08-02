@@ -36,9 +36,19 @@ async function resolveClothBuffers(clothFiles, clothImageUrls, product) {
   return buffers;
 }
 
-// @desc    Generate a virtual try-on image: sends the uploaded person photo
-//          and one or more garment photos to the external try-on
-//          microservice, then saves the resulting image URL.
+// @desc    Start a virtual try-on generation: sends the uploaded person
+//          photo and one or more garment photos to the external try-on
+//          microservice. Runs as a background job — this responds as soon
+//          as the job is queued (typically <1s), NOT once generation
+//          finishes (which routinely takes 25-40s). Poll
+//          GET /api/tryon/:id/status for the result.
+//
+//          This is a deliberate design choice, not a shortcut: a
+//          synchronous 30+ second HTTP request is fragile against ANY
+//          proxy/load balancer/CDN timeout in the chain, and there's
+//          usually more than one between a browser and this server in
+//          production. No single timeout value is safe to hard-code
+//          against every possible layer, so the fix is to not need one.
 // @route   POST /api/tryon
 export const processTryon = async (req, res, next) => {
   try {
@@ -98,54 +108,86 @@ export const processTryon = async (req, res, next) => {
       return res.status(400).json({ success: false, message: err.message });
     }
 
-    // Files are held in memory (see middleware/upload.js uploadTryonImages),
-    // so stream the buffers directly to the microservice — no temp files on
-    // disk to create, race on, or clean up.
-    const formData = new FormData();
-    formData.append("person_image", personFile.buffer, {
-      filename: personFile.originalname,
-      contentType: personFile.mimetype,
-    });
-    for (const cloth of clothBuffers) {
-      formData.append("cloth_images", cloth.buffer, {
-        filename: cloth.filename,
-        contentType: cloth.contentType,
-      });
-    }
-
-    let response;
-    try {
-      response = await axios.post(
-        `${process.env.TRYON_SERVICE_URL}/api/v1/tryon`,
-        formData,
-        { headers: formData.getHeaders(), timeout: 45000 },
-      );
-    } catch (err) {
-      // Distinguish "the external service errored/timed out" (502) from our
-      // own bugs (which fall through to the generic error handler below).
-      return res.status(502).json({
-        success: false,
-        message: err.response?.data?.message || "The try-on service failed to process the images",
-      });
-    }
-
-    const imageUrl = response.data?.image_url;
-    if (!imageUrl) {
-      return res
-        .status(502)
-        .json({ success: false, message: "Try-on service did not return an image" });
-    }
-
-    // req.user is always set here (route is behind `protect`) — never trust
-    // a client-supplied userId for whose history a record belongs to.
+    // Create the job record and respond immediately — everything below
+    // this point runs in the background, decoupled from this HTTP request.
     const record = await Tryon.create({
       user: req.user._id,
       product: product._id,
-      imageUrl,
       clothImageUrls,
+      status: "pending",
     });
 
-    res.status(201).json({ success: true, data: record });
+    res.status(202).json({ success: true, data: record });
+
+    runTryonJob(record._id, personFile, clothBuffers).catch((err) => {
+      // runTryonJob already persists failures to the record; this catch
+      // only exists so an unexpected throw can't become an unhandled
+      // promise rejection and crash the process.
+      console.error("[tryon] background job crashed unexpectedly:", err);
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Does the actual slow work: calls the microservice and updates the Tryon
+// record with the result. Never touches `req`/`res` — by the time this
+// runs, the HTTP response has already been sent.
+async function runTryonJob(tryonId, personFile, clothBuffers) {
+  const formData = new FormData();
+  formData.append("person_image", personFile.buffer, {
+    filename: personFile.originalname,
+    contentType: personFile.mimetype,
+  });
+  for (const cloth of clothBuffers) {
+    formData.append("cloth_images", cloth.buffer, {
+      filename: cloth.filename,
+      contentType: cloth.contentType,
+    });
+  }
+
+  try {
+    const response = await axios.post(
+      `${process.env.TRYON_SERVICE_URL}/api/v1/tryon`,
+      formData,
+      { headers: formData.getHeaders(), timeout: Number(process.env.TRYON_SERVICE_TIMEOUT_MS) || 60000 },
+    );
+
+    const imageUrl = response.data?.image_url;
+    if (!imageUrl) {
+      await Tryon.findByIdAndUpdate(tryonId, {
+        status: "failed",
+        error: "Try-on service did not return an image",
+      });
+      return;
+    }
+
+    await Tryon.findByIdAndUpdate(tryonId, { status: "completed", imageUrl });
+  } catch (err) {
+    // Same logging as before — still the place to look in `docker logs`
+    // for the real cause of a failure, just no longer tied to a live
+    // request that a client might have already given up waiting on.
+    console.error("[tryon] upstream request failed:", {
+      code: err.code,
+      message: err.message,
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+    const message =
+      err.response?.data?.message || err.response?.data?.detail || "The try-on service failed to process the images";
+    await Tryon.findByIdAndUpdate(tryonId, { status: "failed", error: message });
+  }
+}
+
+// @desc    Poll the status of a try-on job started via POST /api/tryon
+// @route   GET /api/tryon/:id/status
+export const getTryonStatus = async (req, res, next) => {
+  try {
+    const record = await Tryon.findOne({ _id: req.params.id, user: req.user._id });
+    if (!record) {
+      return res.status(404).json({ success: false, message: "Try-on job not found" });
+    }
+    res.json({ success: true, data: record });
   } catch (err) {
     next(err);
   }

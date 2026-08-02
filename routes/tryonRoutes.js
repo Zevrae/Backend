@@ -1,5 +1,5 @@
 import express from "express";
-import { processTryon, getMyTryons } from "../controllers/tryonController.js";
+import { processTryon, getMyTryons, getTryonStatus } from "../controllers/tryonController.js";
 import { protect } from "../middleware/auth.js";
 import { uploadTryonImages } from "../middleware/upload.js";
 
@@ -33,13 +33,17 @@ router.use(protect);
  *       200:
  *         description: Paginated list of the user's saved try-on results
  *   post:
- *     summary: Generate a virtual try-on image from one or more garments
+ *     summary: Start a virtual try-on generation job (async — poll for the result)
  *     description: >
  *       Uploads a photo of the user (multipart/form-data) along with one or
- *       more garment images to the external try-on microservice
- *       (TRYON_SERVICE_URL), and saves the resulting image URL against the
- *       current user and the given product. Garment images can be supplied
- *       either as directly-uploaded files ("cloth_images") or by referencing
+ *       more garment images, queues generation against the external try-on
+ *       microservice (TRYON_SERVICE_URL), and returns immediately with a
+ *       'pending' job record — it does NOT wait for generation to finish
+ *       (that routinely takes 25-40s, which is too long/fragile for a
+ *       single synchronous HTTP request through production proxies/load
+ *       balancers). Poll GET /tryon/{id}/status until status is
+ *       'completed' or 'failed'. Garment images can be supplied either as
+ *       directly-uploaded files ("cloth_images") or by referencing
  *       existing product image URLs ("clothImageUrls", a JSON-stringified
  *       array) — the server fetches those from Appwrite itself so the
  *       browser never has to, sidestepping Appwrite's CORS restrictions.
@@ -64,8 +68,8 @@ router.use(protect);
  *                 type: string
  *                 description: JSON-stringified array of product image URLs to use as garments
  *     responses:
- *       201:
- *         description: Try-on generated and saved
+ *       202:
+ *         description: Job queued — status is 'pending'; poll GET /tryon/{id}/status
  *         content:
  *           application/json:
  *             schema:
@@ -77,11 +81,29 @@ router.use(protect);
  *         description: Missing productId, person_image, or at least one garment image
  *       404:
  *         description: Product not found
- *       502:
- *         description: The try-on microservice failed to process the images
  *       503:
  *         description: Virtual try-on is not configured on the server (missing TRYON_SERVICE_URL)
  */
 router.route("/").get(getMyTryons).post(uploadTryonImages, processTryon);
+
+/**
+ * /tryon/{id}/status:
+ *   get:
+ *     summary: Poll the status of a try-on job started via POST /tryon
+ *     tags: [TryOn]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Current job status — 'pending', 'completed' (imageUrl set), or 'failed' (error set)
+ *       404:
+ *         description: Job not found (or doesn't belong to the current user)
+ */
+router.get("/:id/status", getTryonStatus);
 
 export default router;
