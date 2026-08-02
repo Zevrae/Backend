@@ -30,7 +30,11 @@ const app = express();
 // its CSP relaxed for its inline scripts/styles, so that's applied only on
 // the /api-docs routes below instead of globally.
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: 'https://www.zevrae.com',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
 // The `verify` hook stashes the raw request body on req.rawBody — needed to
 // check the Razorpay webhook's HMAC signature, which must be computed over
 // the exact bytes received, not the re-serialized parsed object.
