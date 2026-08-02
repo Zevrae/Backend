@@ -31,13 +31,20 @@ const app = express();
 // the /api-docs routes below instead of globally.
 app.use(helmet());
 app.use(cors({
-  origin: ['https://www.zevrae.com'], // or '*' for testing
+  origin: 'https://www.zevrae.com',   // must be exact domain, not '*'
   methods: ['GET', 'POST', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true                   // required for Safari when cookies/credentials are used
 }));
 
-app.options('*', cors()); // respond to preflight
+// Explicitly handle preflight requests
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', 'https://www.zevrae.com');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.sendStatus(204);
+});
 // The `verify` hook stashes the raw request body on req.rawBody — needed to
 // check the Razorpay webhook's HMAC signature, which must be computed over
 // the exact bytes received, not the re-serialized parsed object.
