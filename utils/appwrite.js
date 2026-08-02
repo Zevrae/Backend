@@ -24,6 +24,35 @@ export const REVIEW_BUCKET_ID = process.env.APPWRITE_REVIEW_BUCKET_ID;
 
 export const isAppwriteConfigured = () => isConfigured;
 
+// None of the calls below previously had any timeout — if Appwrite's API
+// is unreachable or slow (e.g. restricted outbound network egress from the
+// production host, which fits observed symptoms: every Appwrite-touching
+// endpoint fails, everything that never leaves the server works fine),
+// they'd hang indefinitely with no way to fail cleanly. That kind of hang
+// is what eventually gets killed uncleanly by an upstream proxy/timeout —
+// producing a connection reset/no-response that the browser can't
+// distinguish from "blocked by CORS" (there's no response to attach CORS
+// headers to at all). Wrapping every call means a genuine connectivity
+// problem fails fast with a specific, loggable error instead.
+const APPWRITE_TIMEOUT_MS = Number(process.env.APPWRITE_TIMEOUT_MS) || 20000;
+
+const withTimeout = async (promise, label) => {
+  let timer;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Appwrite ${label} timed out after ${APPWRITE_TIMEOUT_MS}ms — check the production server's outbound network access to APPWRITE_ENDPOINT (${process.env.APPWRITE_ENDPOINT}).`)),
+          APPWRITE_TIMEOUT_MS
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 // ---------- Helpers ----------
 const buildFileViewUrl = (bucketId, fileId) =>
   `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucketId}/files/${fileId}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
@@ -50,19 +79,22 @@ export const uploadFileToAppwrite = async (buffer, filename) => {
   }
 
   const file = InputFile.fromBuffer(buffer, filename);
-  const created = await storage.createFile({
-    bucketId: BUCKET_ID,
-    fileId: ID.unique(),
-    file,
-    permissions: [Permission.read(Role.any())],
-  });
+  const created = await withTimeout(
+    storage.createFile({
+      bucketId: BUCKET_ID,
+      fileId: ID.unique(),
+      file,
+      permissions: [Permission.read(Role.any())],
+    }),
+    "createFile (product image)"
+  );
 
   return buildProductFileViewUrl(created.$id);
 };
 
 export const deleteFileFromAppwrite = async (fileId) => {
   if (!isConfigured) return;
-  await storage.deleteFile({ bucketId: BUCKET_ID, fileId });
+  await withTimeout(storage.deleteFile({ bucketId: BUCKET_ID, fileId }), "deleteFile (product image)");
 };
 
 export const getFileBuffer = async (fileId) => {
@@ -72,7 +104,7 @@ export const getFileBuffer = async (fileId) => {
     );
   }
 
-  const result = await storage.getFileDownload({ bucketId: BUCKET_ID, fileId });
+  const result = await withTimeout(storage.getFileDownload({ bucketId: BUCKET_ID, fileId }), "getFileDownload");
   return Buffer.isBuffer(result) ? result : Buffer.from(result);
 };
 
@@ -87,12 +119,15 @@ export const uploadReviewFileToAppwrite = async (buffer, filename) => {
   }
 
   const file = InputFile.fromBuffer(buffer, filename);
-  const created = await storage.createFile({
-    bucketId: REVIEW_BUCKET_ID,
-    fileId: ID.unique(),
-    file,
-    permissions: [Permission.read(Role.any())],
-  });
+  const created = await withTimeout(
+    storage.createFile({
+      bucketId: REVIEW_BUCKET_ID,
+      fileId: ID.unique(),
+      file,
+      permissions: [Permission.read(Role.any())],
+    }),
+    "createFile (review image)"
+  );
 
   return buildReviewFileViewUrl(created.$id);
 };
@@ -101,7 +136,7 @@ export const getReviewFileMeta = async (fileId) => {
   if (!isConfigured || !REVIEW_BUCKET_ID) {
     throw new Error("Appwrite not configured for review bucket");
   }
-  return storage.getFile({ bucketId: REVIEW_BUCKET_ID, fileId });
+  return withTimeout(storage.getFile({ bucketId: REVIEW_BUCKET_ID, fileId }), "getFile (review image)");
 };
 
 export const updateReviewFile = async (fileId, buffer, filename) => {
@@ -110,21 +145,24 @@ export const updateReviewFile = async (fileId, buffer, filename) => {
   }
 
   // Delete old file
-  await storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId });
+  await withTimeout(storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId }), "deleteFile (review image, old)");
 
   // Upload new file
   const file = InputFile.fromBuffer(buffer, filename);
-  const created = await storage.createFile({
-    bucketId: REVIEW_BUCKET_ID,
-    fileId: ID.unique(),
-    file,
-    permissions: [Permission.read(Role.any())],
-  });
+  const created = await withTimeout(
+    storage.createFile({
+      bucketId: REVIEW_BUCKET_ID,
+      fileId: ID.unique(),
+      file,
+      permissions: [Permission.read(Role.any())],
+    }),
+    "createFile (review image, replacement)"
+  );
 
   return buildReviewFileViewUrl(created.$id);
 };
 
 export const deleteReviewFile = async (fileId) => {
   if (!isConfigured || !REVIEW_BUCKET_ID) return;
-  await storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId });
+  await withTimeout(storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId }), "deleteFile (review image)");
 };
