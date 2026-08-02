@@ -167,14 +167,29 @@ async function runTryonJob(tryonId, personFile, clothBuffers) {
     // Same logging as before — still the place to look in `docker logs`
     // for the real cause of a failure, just no longer tied to a live
     // request that a client might have already given up waiting on.
+    // ECONNABORTED (with a "timeout of Xms exceeded" message) means the
+    // connection was established fine and OUR OWN axios `timeout` fired —
+    // i.e. the microservice really was just slow to respond.
+    // ETIMEDOUT/ECONNREFUSED/ENOTFOUND with no response at all means the
+    // connection to TRYON_SERVICE_URL never properly opened in the first
+    // place — that's a network/DNS/firewall/proxy problem between this
+    // server and the microservice, NOT a "Gemini is slow" problem, and no
+    // amount of raising TRYON_SERVICE_TIMEOUT_MS will fix it.
+    const isNetworkLevelFailure = !err.response && err.code !== "ECONNABORTED";
     console.error("[tryon] upstream request failed:", {
       code: err.code,
       message: err.message,
       status: err.response?.status,
       data: err.response?.data,
+      diagnosis: isNetworkLevelFailure
+        ? "NETWORK-LEVEL — never connected to TRYON_SERVICE_URL. Check DNS/firewall/proxy between this server and the microservice, not Gemini's speed."
+        : err.code === "ECONNABORTED"
+          ? "APPLICATION-LEVEL TIMEOUT — connection was fine, the microservice itself didn't respond in time."
+          : "Upstream returned an explicit error response — see status/data above.",
     });
-    const message =
-      err.response?.data?.message || err.response?.data?.detail || "The try-on service failed to process the images";
+    const message = isNetworkLevelFailure
+      ? "Could not reach the try-on service. This is a server configuration issue, not something retrying will fix."
+      : err.response?.data?.message || err.response?.data?.detail || "The try-on service failed to process the images";
     await Tryon.findByIdAndUpdate(tryonId, { status: "failed", error: message });
   }
 }
