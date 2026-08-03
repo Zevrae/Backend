@@ -32,7 +32,7 @@ const app = express();
 app.use(helmet());
 app.use(cors({
   origin: 'https://www.zevrae.com',   // must be exact domain, not '*'
-  methods: ['GET', 'POST', 'OPTIONS'],
+  methods: ['GET', 'POST', 'OPTIONS','DELETE','PUT'], // allowed methods
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true                   // required for Safari when cookies/credentials are used
 }));
@@ -40,7 +40,7 @@ app.use(cors({
 // Explicitly handle preflight requests
 app.options('*', (req, res) => {
   res.header('Access-Control-Allow-Origin', 'https://www.zevrae.com');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,DELETE,PUT');
   res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
   res.header('Access-Control-Allow-Credentials', 'true');
   res.sendStatus(204);
