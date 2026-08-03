@@ -30,7 +30,7 @@ app.use(helmet());
 // ✅ Improved CORS config
 const allowedOrigins = [
   "https://www.zevrae.com",
-  "https://zevrae.com",
+  "https://zevrae.com"
 ];
 
 app.use(cors({
