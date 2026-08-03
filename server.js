@@ -19,35 +19,38 @@ import { standaloneRouter as reviewStandaloneRoutes } from "./routes/reviewRoute
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
 import normalizeIds from "./middleware/normalizeIds.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
-import tryonRoutes from './routes/tryonRoutes.js';
-import imageRoutes from './routes/imageRoutes.js';
-
+import tryonRoutes from "./routes/tryonRoutes.js";
+import imageRoutes from "./routes/imageRoutes.js";
 
 const app = express();
 
 // --- Middleware ---
-// Full Helmet defaults (including CSP) for the whole app; Swagger UI needs
-// its CSP relaxed for its inline scripts/styles, so that's applied only on
-// the /api-docs routes below instead of globally.
 app.use(helmet());
+
+// ✅ Improved CORS config
+const allowedOrigins = [
+  "https://www.zevrae.com",
+  "https://zevrae.com",
+];
+
 app.use(cors({
-  origin: 'https://www.zevrae.com',   // must be exact domain, not '*'
-  methods: ['GET', 'POST', 'OPTIONS','DELETE','PUT'], // allowed methods
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true                   // required for Safari when cookies/credentials are used
+  origin: allowedOrigins,
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
-// Explicitly handle preflight requests
-app.options('*', (req, res) => {
-  res.header('Access-Control-Allow-Origin', 'https://www.zevrae.com');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS,DELETE,PUT');
-  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.sendStatus(204);
+// ✅ Explicit preflight handler
+app.options("*", (req, res) => {
+  const origin = allowedOrigins.includes(req.headers.origin) ? req.headers.origin : allowedOrigins[0];
+  res.header("Access-Control-Allow-Origin", origin);
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.sendStatus(200);
 });
-// The `verify` hook stashes the raw request body on req.rawBody — needed to
-// check the Razorpay webhook's HMAC signature, which must be computed over
-// the exact bytes received, not the re-serialized parsed object.
+
+// Razorpay webhook raw body
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -56,6 +59,7 @@ app.use(
   }),
 );
 app.use(express.urlencoded({ extended: true }));
+
 if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
@@ -66,8 +70,6 @@ app.get("/health", (req, res) => res.json({ status: "ok" }));
 app.use(normalizeIds);
 
 // --- API docs ---
-// Swagger UI's inline scripts/styles are blocked by Helmet's default CSP,
-// so relax it only for these routes rather than for the whole app.
 app.use(
   "/api-docs",
   helmet({ contentSecurityPolicy: false }),
@@ -88,10 +90,10 @@ app.use("/api/reviews", reviewStandaloneRoutes);
 app.use("/api/discounts", discountRoutes);
 app.use("/api/collections", collectionRoutes);
 app.use("/api/analysis", analysisRoutes);
-app.use('/api/tryon', tryonRoutes);
-app.use('/api/images', imageRoutes);
+app.use("/api/tryon", tryonRoutes);
+app.use("/api/images", imageRoutes);
 
-// --- Error handling (must be last) ---
+// --- Error handling ---
 app.use(notFound);
 app.use(errorHandler);
 
