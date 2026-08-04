@@ -12,10 +12,6 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-// 5MB was rejecting ordinary photos straight off modern phone cameras
-// (12MP+ JPEGs routinely land in the 8-15MB range) — this is very likely
-// why uploads "worked for some people and not others": it depended on
-// which phone/camera took the photo, not anything the person did wrong.
 const MAX_PRODUCT_IMAGE_SIZE_MB = 15;
 
 // Accepts up to 5 files under the "images" form field, kept in memory so

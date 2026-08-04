@@ -4,6 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
+import multer from "multer"; // ✅ import multer so we can catch its errors
 import collectionRoutes from "./routes/collectionRoutes.js";
 import discountRoutes from "./routes/discountRoutes.js";
 import connectDB from "./config/db.js";
@@ -92,6 +93,23 @@ app.use("/api/collections", collectionRoutes);
 app.use("/api/analysis", analysisRoutes);
 app.use("/api/tryon", tryonRoutes);
 app.use("/api/images", imageRoutes);
+
+// --- Multer error handler (CORS-safe) ---
+app.use((err, req, res, next) => {
+  if (err instanceof multer.MulterError) {
+    const origin = allowedOrigins.includes(req.headers.origin) ? req.headers.origin : allowedOrigins[0];
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+  next(err);
+});
 
 // --- Error handling ---
 app.use(notFound);
