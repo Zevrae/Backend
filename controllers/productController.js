@@ -1,15 +1,34 @@
-import Product from '../models/Product.js';
+import Product from "../models/Product.js";
 import {
   uploadFileToAppwrite,
   deleteFileFromAppwrite,
   extractFileIdFromUrl,
   isAppwriteConfigured,
-} from '../utils/appwrite.js';
+} from "../utils/appwrite.js";
+
+// Validation helper
+function validateInventory(reqBody) {
+  const { inventory_mode, sizes, size_stock } = reqBody;
+
+  if (inventory_mode === "size" && (!sizes || sizes.length === 0)) {
+    return "Sizes are required when inventory_mode is 'size'";
+  }
+  if (inventory_mode === "nosize") {
+    reqBody.sizes = [];
+    if (!size_stock || !size_stock.nosize) {
+      return "size_stock must include 'nosize' when inventory_mode is 'nosize'";
+    }
+  }
+  return null;
+}
 
 // @desc    Create a product
 // @route   POST /api/products
 export const createProduct = async (req, res, next) => {
   try {
+    const error = validateInventory(req.body);
+    if (error) return res.status(400).json({ success: false, message: error });
+
     const product = await Product.create(req.body);
     res.status(201).json({ success: true, data: product });
   } catch (err) {
@@ -19,7 +38,6 @@ export const createProduct = async (req, res, next) => {
 
 // @desc    Get all products (paginated, filterable, searchable)
 // @route   GET /api/products
-// Query params: page, limit, category, subcategory, status, search, sort
 export const getProducts = async (req, res, next) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -31,9 +49,10 @@ export const getProducts = async (req, res, next) => {
     if (req.query.subcategory) filter.subcategory = req.query.subcategory;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.collection) filter.collections = req.query.collection;
+    if (req.query.inventory_mode) filter.inventory_mode = req.query.inventory_mode;
     if (req.query.search) filter.$text = { $search: req.query.search };
 
-    const sort = req.query.sort ? req.query.sort.split(',').join(' ') : '-created_at';
+    const sort = req.query.sort ? req.query.sort.split(",").join(" ") : "-created_at";
 
     const [items, total] = await Promise.all([
       Product.find(filter).sort(sort).skip(skip).limit(limit).lean(),
@@ -61,7 +80,7 @@ export const getProductById = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id).lean();
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res.status(404).json({ success: false, message: "Product not found" });
     }
     res.json({ success: true, data: product });
   } catch (err) {
@@ -176,7 +195,7 @@ export const deleteProductImage = async (req, res, next) => {
       try {
         await deleteFileFromAppwrite(fileId);
       } catch (e) {
-        // File may already be gone from the bucket — don't block removing it from the product
+        console.error('Failed to delete image from Appwrite:', e);
       }
     }
 

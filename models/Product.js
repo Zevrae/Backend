@@ -14,11 +14,6 @@ const ProductSchema = new Schema(
       required: [true, "Description is required"],
       trim: true,
     },
-    // NOTE: named `collections` (plural, ObjectId refs) rather than `collection` —
-    // `collection` is a reserved property name on Mongoose documents (it holds
-    // the underlying MongoDB collection handle), so using it as a schema field
-    // triggers a warning and can shadow that internal property. A product can
-    // belong to multiple collections (e.g. "New Arrivals" + "Summer Sale").
     collections: {
       type: [Schema.Types.ObjectId],
       ref: "Collection",
@@ -55,9 +50,6 @@ const ProductSchema = new Schema(
           "Compare price must be a whole number of rupees (no decimals/paise)",
       },
     },
-    // A manual discount percentage override (e.g. for flash sales),
-    // independent of compare_price — storefronts can show whichever of the
-    // two makes sense, or both.
     discount: {
       type: Number,
       min: [0, "Discount cannot be negative"],
@@ -71,23 +63,35 @@ const ProductSchema = new Schema(
         message: "Images must be an array of strings",
       },
     },
+
+    // Inventory mode: either "size" or "nosize"
+    inventory_mode: {
+      type: String,
+      enum: ["size", "nosize"],
+      required: true,
+      default: "nosize",
+    },
+
+    // Sizes only matter if inventory_mode === "size"
     sizes: {
       type: [String],
       default: [],
+      validate: {
+        validator: function (arr) {
+          if (this.inventory_mode === "size" && (!arr || arr.length === 0)) {
+            return false;
+          }
+          if (this.inventory_mode === "nosize" && arr.length > 0) {
+            return false;
+          }
+          return true;
+        },
+        message:
+          "Sizes must be provided when inventory_mode is 'size', and must be empty when 'nosize'.",
+      },
     },
-    status: {
-      // Assumption: enum kept flexible since original schema only specified bsonType "string".
-      // Adjust this list to match your actual business statuses.
-      type: String,
-      required: [true, "Status is required"],
-      enum: ["active", "inactive", "draft", "archived"],
-      default: "draft",
-      index: true,
-    },
-    // Per-size inventory — e.g. { S: 4, M: 10, L: 0 }. `stock_quantity`
-    // below is auto-derived from this as the total across all sizes, so
-    // API consumers that just want "is there any stock at all" don't need
-    // to sum the map themselves.
+
+    // Unified stock map: either keyed by size ("S","M","L","Custom") or "nosize"
     size_stock: {
       type: Map,
       of: {
@@ -100,16 +104,21 @@ const ProductSchema = new Schema(
       },
       default: {},
     },
+
     stock_quantity: {
-      // Derived automatically from size_stock in the pre-validate hook below —
-      // not meant to be set directly by API callers.
       type: Number,
       default: 0,
       min: [0, "Stock quantity cannot be negative"],
     },
-    // Additional fields can be added here as needed
 
-    // --- Soft delete support ---
+    status: {
+      type: String,
+      required: [true, "Status is required"],
+      enum: ["active", "inactive", "draft", "archived"],
+      default: "draft",
+      index: true,
+    },
+
     is_deleted: {
       type: Boolean,
       default: false,
@@ -121,7 +130,6 @@ const ProductSchema = new Schema(
     },
   },
   {
-    // Timestamps mapped to created_at / updated_at to match the provided schema
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
     versionKey: "__v",
     toJSON: {
@@ -147,12 +155,9 @@ const ProductSchema = new Schema(
   },
 );
 
-// Keep stock_quantity (the "any stock at all" total) in sync with size_stock
-// whenever a document is saved directly (create/save — .lean() reads are
-// unaffected since there's no document to hook into, but size_stock is
-// already the source of truth for those callers too).
-ProductSchema.pre("validate", function deriveStockQuantity(next) {
-  if (this.size_stock && this.size_stock.size >= 0) {
+// Keep stock_quantity in sync with size_stock
+ProductSchema.pre("validate", function (next) {
+  if (this.size_stock) {
     let total = 0;
     for (const qty of this.size_stock.values()) {
       total += qty || 0;
@@ -162,46 +167,42 @@ ProductSchema.pre("validate", function deriveStockQuantity(next) {
   next();
 });
 
-// findOneAndUpdate (used by updateProduct) bypasses document middleware, so
-// mirror the derivation here for updates that touch size_stock.
-ProductSchema.pre("findOneAndUpdate", function deriveStockQuantityOnUpdate(next) {
+ProductSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   if (update && update.size_stock !== undefined) {
     const entries = update.size_stock instanceof Map
       ? Array.from(update.size_stock.values())
       : Object.values(update.size_stock || {});
-    update.stock_quantity = entries.reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    update.stock_quantity = entries.reduce(
+      (sum, qty) => sum + (Number(qty) || 0),
+      0
+    );
   }
   next();
 });
 
-// Compound index for common filtered listing queries (category + subcategory + status)
+// Indexes
 ProductSchema.index({ category: 1, subcategory: 1, status: 1 });
-
-// Text index for search across name & description
 ProductSchema.index({ name: "text", description: "text" });
 
-// Exclude soft-deleted documents from normal find queries by default
+// Soft delete query middleware
 function excludeSoftDeleted(next) {
-  // Allow callers to explicitly opt into seeing deleted docs via { withDeleted: true } query option
   if (!this.getOptions().withDeleted) {
     this.where({ is_deleted: { $ne: true } });
   }
   next();
 }
-
 ProductSchema.pre("find", excludeSoftDeleted);
 ProductSchema.pre("findOne", excludeSoftDeleted);
 ProductSchema.pre("countDocuments", excludeSoftDeleted);
 
-// Instance method: soft delete
+// Instance methods
 ProductSchema.methods.softDelete = function () {
   this.is_deleted = true;
   this.deleted_at = new Date();
   return this.save();
 };
 
-// Instance method: restore
 ProductSchema.methods.restore = function () {
   this.is_deleted = false;
   this.deleted_at = null;
