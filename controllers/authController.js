@@ -15,15 +15,88 @@ const buildVerificationUrl = (rawToken) => {
 
 const sendVerificationEmail = async (user, rawToken) => {
   const url = buildVerificationUrl(rawToken);
+  const expiresIn = process.env.EMAIL_VERIFICATION_EXPIRES_HOURS || 24;
+
+  const html = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Verify Your Zevrae Account</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+          background-color: #f5f7fa;
+          margin: 0;
+          padding: 0;
+        }
+        .container {
+          max-width: 600px;
+          margin: 40px auto;
+          background-color: #ffffff;
+          border-radius: 8px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+          overflow: hidden;
+        }
+        .header {
+          background-color: #0078d4;
+          color: #ffffff;
+          text-align: center;
+          padding: 20px;
+          font-size: 22px;
+          font-weight: 600;
+          letter-spacing: 1px;
+        }
+        .content {
+          padding: 30px;
+          color: #333333;
+          line-height: 1.6;
+        }
+        .button {
+          display: inline-block;
+          background-color: #0078d4;
+          color: #ffffff !important;
+          text-decoration: none;
+          padding: 12px 24px;
+          border-radius: 6px;
+          font-weight: 500;
+          margin-top: 20px;
+        }
+        .footer {
+          text-align: center;
+          font-size: 12px;
+          color: #777777;
+          padding: 20px;
+          background-color: #f5f7fa;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">ZEVRAE</div>
+        <div class="content">
+          <p>Hi <strong>${user.name}</strong>,</p>
+          <p>Welcome to <strong>Zevrae</strong> — Luxury is a matter of choice. Please verify your email address to activate your account.</p>
+          <p style="text-align:center;">
+            <a href="${url}" class="button">Verify My Email</a>
+          </p>
+          <p>This link will expire in <strong>${expiresIn} hours</strong>. If you didn’t create an account, you can safely ignore this message.</p>
+          <p>Thanks,<br/>The Zevrae Team</p>
+        </div>
+        <div class="footer">
+          © ${new Date().getFullYear()} Zevrae. All rights reserved.<br/>
+          officialzevrae@gmail.com
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
   await sendEmail({
     to: user.email,
     subject: "Verify your Zevrae account",
-    html: `
-      <p>Hi ${user.name},</p>
-      <p>Please verify your email address to activate your Zevrae account:</p>
-      <p><a href="${url}">${url}</a></p>
-      <p>This link expires in ${process.env.EMAIL_VERIFICATION_EXPIRES_HOURS || 24} hours.</p>
-    `,
+    html,
   });
 };
 
@@ -69,12 +142,10 @@ export const verifyEmail = async (req, res, next) => {
     }).select("+email_verification_token +email_verification_expires");
 
     if (!user) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Verification link is invalid or has expired",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Verification link is invalid or has expired",
+      });
     }
 
     user.is_email_verified = true;
@@ -82,10 +153,77 @@ export const verifyEmail = async (req, res, next) => {
     user.email_verification_expires = undefined;
     await user.save({ validateBeforeSave: false });
 
-    res.json({
-      success: true,
-      message: "Email verified successfully. You can now log in.",
-    });
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Email Verified - Zevrae</title>
+        <style>
+          body {
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f7fa;
+            margin: 0;
+            padding: 0;
+          }
+          .container {
+            max-width: 600px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+          }
+          .header {
+            background-color: #0078d4;
+            color: #ffffff;
+            text-align: center;
+            padding: 20px;
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: 1px;
+          }
+          .content {
+            padding: 30px;
+            color: #333333;
+            line-height: 1.6;
+            text-align: center;
+          }
+          .button {
+            display: inline-block;
+            background-color: #0078d4;
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: 500;
+            margin-top: 20px;
+          }
+          .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #777777;
+            padding: 20px;
+            background-color: #f5f7fa;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">ZEVRAE</div>
+          <div class="content">
+            <h2>Email Verified Successfully!</h2>
+            <p>Thank you for verifying your email address. You can now log in to your Zevrae account.</p>
+            <a href="https://www.zevrae.com" class="button">Go to Login</a>
+          </div>
+          <div class="footer">
+            © ${new Date().getFullYear()} Zevrae. All rights reserved.<br/> 
+          </div>
+        </div>
+      </body>
+      </html>
+    `);
   } catch (err) {
     next(err);
   }
@@ -104,8 +242,6 @@ export const resendVerification = async (req, res, next) => {
 
     const user = await User.findOne({ email: email.toLowerCase() });
 
-    // Respond the same way whether or not the account exists, to avoid
-    // leaking which emails are registered.
     const genericResponse = {
       success: true,
       message:
@@ -138,7 +274,7 @@ export const login = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
+      "+password"
     );
     if (!user || !(await user.comparePassword(password))) {
       return res
@@ -191,9 +327,6 @@ export const googleLogin = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Google credential is required" });
     }
 
-    // Verifies the token's signature, audience, issuer and expiry against
-    // Google's public keys — this is what actually proves the request came
-    // from Google and wasn't forged by the client.
     let payload;
     try {
       const ticket = await googleClient.verifyIdToken({
@@ -216,13 +349,10 @@ export const googleLogin = async (req, res, next) => {
     let user = await User.findOne({ google_id: payload.sub });
 
     if (!user) {
-      // Not linked yet — if an account already exists with this email
-      // (e.g. they originally signed up with a password), link Google to
-      // it rather than creating a duplicate account for the same person.
       user = await User.findOne({ email });
       if (user) {
         user.google_id = payload.sub;
-        user.is_email_verified = true; // Google already verified it
+        user.is_email_verified = true;
         await user.save({ validateBeforeSave: false });
       } else {
         user = await User.create({
