@@ -14,9 +14,14 @@ function validateInventory(reqBody) {
     return "Sizes are required when inventory_mode is 'size'";
   }
   if (inventory_mode === "nosize") {
+    // "nosize" products (jewellery, accessories, one-off items, etc.) still
+    // track stock — just under a custom label instead of a standard size.
+    // That label is allowed to be blank ("" is a valid key here, meaning
+    // "no particular label"), so we only require at least one stock entry
+    // to exist, not that it be named anything specific.
     reqBody.sizes = [];
-    if (!size_stock || !size_stock.nosize) {
-      return "size_stock must include 'nosize' when inventory_mode is 'nosize'";
+    if (!size_stock || Object.keys(size_stock).length === 0) {
+      return "At least one stock entry is required when inventory_mode is 'nosize' (a size/variant label is optional)";
     }
   }
   return null;
@@ -92,6 +97,9 @@ export const getProductById = async (req, res, next) => {
 // @route   PUT /api/products/:id
 export const updateProduct = async (req, res, next) => {
   try {
+    const error = validateInventory(req.body);
+    if (error) return res.status(400).json({ success: false, message: error });
+
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, is_deleted: { $ne: true } },
       req.body,
