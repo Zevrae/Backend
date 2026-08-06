@@ -40,7 +40,7 @@ const sendVerificationEmail = async (user, rawToken) => {
           overflow: hidden;
         }
         .header {
-          background-color: #0078d4;
+          background-color: #c5a059;
           color: #ffffff;
           text-align: center;
           padding: 20px;
@@ -55,7 +55,7 @@ const sendVerificationEmail = async (user, rawToken) => {
         }
         .button {
           display: inline-block;
-          background-color: #0078d4;
+          background-color: #c5a059;
           color: #ffffff !important;
           text-decoration: none;
           padding: 12px 24px;
@@ -176,7 +176,7 @@ export const verifyEmail = async (req, res, next) => {
             overflow: hidden;
           }
           .header {
-            background-color: #0078d4;
+            background-color: #c5a059;
             color: #ffffff;
             text-align: center;
             padding: 20px;
@@ -192,7 +192,7 @@ export const verifyEmail = async (req, res, next) => {
           }
           .button {
             display: inline-block;
-            background-color: #0078d4;
+            background-color: #c5a059;
             color: #ffffff !important;
             text-decoration: none;
             padding: 12px 24px;
