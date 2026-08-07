@@ -170,10 +170,20 @@ export const uploadProductImages = async (req, res, next) => {
       uploadedUrls.push(url);
     }
 
-    product.images.push(...uploadedUrls);
-    await product.save();
+    // Atomic $push, not fetch-mutate-save: `.save()` re-validates the ENTIRE
+    // document, including the sizes/inventory_mode cross-field check below —
+    // completely unrelated to adding an image, but enough to block this
+    // action for any product whose stored data doesn't perfectly satisfy
+    // that check (e.g. a product created before inventory_mode existed).
+    // findOneAndUpdate only touches (and only validates, since runValidators
+    // isn't set here) the field actually being changed.
+    const updated = await Product.findOneAndUpdate(
+      { _id: req.params.id, is_deleted: { $ne: true } },
+      { $push: { images: { $each: uploadedUrls } } },
+      { new: true }
+    );
 
-    res.status(201).json({ success: true, data: product });
+    res.status(201).json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }
@@ -207,10 +217,16 @@ export const deleteProductImage = async (req, res, next) => {
       }
     }
 
-    product.images.splice(idx, 1);
-    await product.save();
+    // Same fix as uploadProductImages above: atomic $pull instead of
+    // fetch-mutate-save, so this doesn't trigger full-document
+    // re-validation of fields it never touches.
+    const updated = await Product.findOneAndUpdate(
+      { _id: req.params.id, is_deleted: { $ne: true } },
+      { $pull: { images: imageUrl } },
+      { new: true }
+    );
 
-    res.json({ success: true, data: product });
+    res.json({ success: true, data: updated });
   } catch (err) {
     next(err);
   }

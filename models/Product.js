@@ -78,10 +78,23 @@ const ProductSchema = new Schema(
       default: [],
       validate: {
         validator: function (arr) {
-          if (this.inventory_mode === "size" && (!arr || arr.length === 0)) {
+          // On .save()/.create(), `this` is the document, so
+          // `this.inventory_mode` is exactly what you'd expect. But on
+          // findOneAndUpdate with context:'query' (see updateProduct),
+          // `this` is the QUERY, not the document — plain property access
+          // like `this.inventory_mode` is unreliable there and can
+          // silently read as undefined, letting inconsistent data through.
+          // getUpdate() reliably returns the actual update payload in
+          // either context.
+          const update = typeof this.getUpdate === "function" ? this.getUpdate() : null;
+          const mode = update
+            ? update.inventory_mode ?? update.$set?.inventory_mode
+            : this.inventory_mode;
+
+          if (mode === "size" && (!arr || arr.length === 0)) {
             return false;
           }
-          if (this.inventory_mode === "nosize" && arr.length > 0) {
+          if (mode === "nosize" && arr && arr.length > 0) {
             return false;
           }
           return true;
