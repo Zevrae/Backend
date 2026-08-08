@@ -1,8 +1,15 @@
 import mongoose from 'mongoose';
 const { Schema } = mongoose;
 
-// Tracks a lightweight demand signal per product (currently incremented
-// whenever a unit of the product is ordered — see orderController.js).
+// Tracks lightweight demand signals per product:
+//  - demandCounter: units actually ordered (incremented in orderController.js)
+//  - notifyCounter: "notify me when back in stock" signups on an out-of-stock
+//    item (incremented in stockNotificationController.js)
+// Kept as two separate counters rather than one combined number on purpose —
+// a product with high notifyCounter and low/zero demandCounter is a very
+// different inventory signal (real demand going unfulfilled) than one with
+// high demandCounter alone, and collapsing them into one number would hide
+// exactly that distinction.
 const AnalysisSchema = new Schema(
   {
     productId: {
@@ -13,6 +20,11 @@ const AnalysisSchema = new Schema(
       index: true,
     },
     demandCounter: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    notifyCounter: {
       type: Number,
       default: 0,
       min: 0,

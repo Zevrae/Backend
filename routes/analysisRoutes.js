@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAnalysis, updateAnalysis } from '../controllers/analysisController.js';
+import { getAnalysis, getAnalysisSummary, updateAnalysis } from '../controllers/analysisController.js';
 import { protect, authorize } from '../middleware/auth.js';
 
 const router = Router();
@@ -53,6 +53,24 @@ const router = Router();
  *       404:
  *         description: Product not found
  */
+/**
+ * @swagger
+ * /analysis/summary:
+ *   get:
+ *     summary: Category-level demand breakdown and restocking insights (admin only)
+ *     description: >
+ *       Returns three views: demand totals grouped by category, the top 10
+ *       products overall by combined demand, and — the most actionable list —
+ *       products with active "notify me" signups that are currently out of
+ *       stock (real, unfulfilled demand).
+ *     tags: [Analysis]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Aggregated demand insights
+ */
+router.get('/summary', protect, authorize('admin'), getAnalysisSummary);
 router.get('/', protect, authorize('admin'), getAnalysis);
 router.put('/', protect, authorize('admin'), updateAnalysis);
 

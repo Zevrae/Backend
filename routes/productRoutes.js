@@ -10,8 +10,9 @@ import {
   deleteProductImage,
 } from '../controllers/productController.js';
 import reviewRoutes from './reviewRoutes.js';
-import { protect, authorize } from '../middleware/auth.js';
+import { protect, authorize, optionalAuth } from '../middleware/auth.js';
 import { uploadImages } from '../middleware/upload.js';
+import { subscribeToStockNotification, getStockNotifications } from '../controllers/stockNotificationController.js';
 
 const router = express.Router();
 
@@ -226,6 +227,57 @@ router
   .delete(protect, authorize('admin'), deleteProductImage);
 
 // Nested: /api/products/:productId/reviews
+/**
+ * @swagger
+ * /products/{id}/notify:
+ *   post:
+ *     summary: Sign up to be notified when an out-of-stock product (or size) is back
+ *     description: >
+ *       Works for guests (email required) and logged-in users (email auto-filled
+ *       from the account). Rejects if the product/size is actually in stock.
+ *       Also increments the product's notifyCounter in the Analysis collection,
+ *       which is what the admin Analysis dashboard reads from.
+ *     tags: [Products]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email: { type: string, description: "Required for guests; ignored (account email used instead) if logged in" }
+ *               size: { type: string, description: "Which size they want — omit for 'nosize' products" }
+ *     responses:
+ *       201:
+ *         description: Signed up
+ *       200:
+ *         description: Already signed up (not an error)
+ *       400:
+ *         description: Missing/invalid email, or the product/size is actually in stock
+ *       404:
+ *         description: Product not found
+ *   get:
+ *     summary: List pending notify-me signups for a product (admin only)
+ *     tags: [Products]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: List of not-yet-notified signups
+ */
+router.route('/:id/notify')
+  .post(optionalAuth, subscribeToStockNotification)
+  .get(protect, authorize('admin'), getStockNotifications);
+
 router.use('/:productId/reviews', reviewRoutes);
 
 export default router;

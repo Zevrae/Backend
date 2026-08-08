@@ -40,7 +40,7 @@ const sendVerificationEmail = async (user, rawToken) => {
           overflow: hidden;
         }
         .header {
-          background-color: #17140f;
+          background-color: #c5a059;
           color: #ffffff;
           text-align: center;
           padding: 20px;
@@ -74,7 +74,6 @@ const sendVerificationEmail = async (user, rawToken) => {
     </head>
     <body>
       <div class="container">
-        <img src="https://drive.google.com/file/d/1Bjdj7AuaX9akam2z2zEjPtME9Vs3QKpd/view?usp=sharing" alt="Zevrae Logo" style="display:block; margin: 20px auto; max-width: 150px;" />
         <div class="header">ZEVRAE</div>
         <div class="content">
           <p>Hi <strong>${user.name}</strong>,</p>
@@ -177,7 +176,7 @@ export const verifyEmail = async (req, res, next) => {
             overflow: hidden;
           }
           .header {
-            background-color: #17140f;
+            background-color: #c5a059;
             color: #ffffff;
             text-align: center;
             padding: 20px;
@@ -212,7 +211,6 @@ export const verifyEmail = async (req, res, next) => {
       </head>
       <body>
         <div class="container">
-          <img src="https://drive.google.com/file/d/1Bjdj7AuaX9akam2z2zEjPtME9Vs3QKpd/view?usp=sharing" alt="Zevrae Logo" style="display:block; margin: 20px auto; max-width: 150px;" />
           <div class="header">ZEVRAE</div>
           <div class="content">
             <h2>Email Verified Successfully!</h2>
@@ -276,7 +274,7 @@ export const login = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password",
+      "+password"
     );
     if (!user || !(await user.comparePassword(password))) {
       return res
@@ -320,16 +318,13 @@ export const googleLogin = async (req, res, next) => {
     if (!googleClient) {
       return res.status(503).json({
         success: false,
-        message:
-          "Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)",
+        message: "Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)",
       });
     }
 
     const { credential } = req.body;
     if (!credential) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Google credential is required" });
+      return res.status(400).json({ success: false, message: "Google credential is required" });
     }
 
     let payload;
@@ -340,22 +335,14 @@ export const googleLogin = async (req, res, next) => {
       });
       payload = ticket.getPayload();
     } catch (err) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid or expired Google credential",
-      });
+      return res.status(401).json({ success: false, message: "Invalid or expired Google credential" });
     }
 
     if (!payload?.email) {
-      return res.status(401).json({
-        success: false,
-        message: "Google account has no email on file",
-      });
+      return res.status(401).json({ success: false, message: "Google account has no email on file" });
     }
     if (payload.email_verified === false) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Google email is not verified" });
+      return res.status(401).json({ success: false, message: "Google email is not verified" });
     }
 
     const email = payload.email.toLowerCase();
@@ -379,9 +366,7 @@ export const googleLogin = async (req, res, next) => {
     }
 
     if (!user.is_active) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Account is deactivated" });
+      return res.status(403).json({ success: false, message: "Account is deactivated" });
     }
 
     const token = generateToken(user._id);
