@@ -235,7 +235,6 @@ export const verifyEmail = async (req, res, next) => {
   }
 };
 
-// @desc    Resend the verification email
 // @route   POST /api/auth/resend-verification
 export const resendVerification = async (req, res, next) => {
   try {
