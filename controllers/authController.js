@@ -8,6 +8,16 @@ const googleClient = process.env.GOOGLE_CLIENT_ID
   ? new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
   : null;
 
+if (!process.env.GOOGLE_CLIENT_ID) {
+  console.warn(
+    "[auth] GOOGLE_CLIENT_ID is not set — POST /api/auth/google will return 503 until it is configured.",
+  );
+} else {
+  console.log(
+    `[auth] Google sign-in configured for client ID ending in …${process.env.GOOGLE_CLIENT_ID.slice(-12)}`,
+  );
+}
+
 const buildVerificationUrl = (rawToken) => {
   const base = process.env.API_BASE_URL;
   return `${base}/api/auth/verify-email/${rawToken}`;
@@ -100,8 +110,6 @@ const sendVerificationEmail = async (user, rawToken) => {
   });
 };
 
-// @desc    Register a new user (unverified until they click the emailed link)
-// @route   POST /api/auth/register
 export const register = async (req, res, next) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -130,8 +138,6 @@ export const register = async (req, res, next) => {
   }
 };
 
-// @desc    Verify an email address using the token from the verification email
-// @route   GET /api/auth/verify-email/:token
 export const verifyEmail = async (req, res, next) => {
   try {
     const hashed = hashToken(req.params.token);
@@ -274,7 +280,7 @@ export const login = async (req, res, next) => {
     }
 
     const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password"
+      "+password",
     );
     if (!user || !(await user.comparePassword(password))) {
       return res
@@ -318,13 +324,16 @@ export const googleLogin = async (req, res, next) => {
     if (!googleClient) {
       return res.status(503).json({
         success: false,
-        message: "Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)",
+        message:
+          "Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)",
       });
     }
 
     const { credential } = req.body;
     if (!credential) {
-      return res.status(400).json({ success: false, message: "Google credential is required" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Google credential is required" });
     }
 
     let payload;
@@ -335,14 +344,41 @@ export const googleLogin = async (req, res, next) => {
       });
       payload = ticket.getPayload();
     } catch (err) {
-      return res.status(401).json({ success: false, message: "Invalid or expired Google credential" });
+      // Log the real reason server-side. Do NOT put err.message in the
+      // response — it can leak config details — but this is the single
+      // most useful line for diagnosing Google sign-in failures, since
+      // "Invalid or expired" below is returned for several different
+      // underlying causes (actually expired token, clock skew, and most
+      // commonly: audience/client-ID mismatch between frontend and backend).
+      console.error("[auth] Google verifyIdToken failed:", err.message);
+
+      if (
+        err.message?.includes("Wrong recipient") ||
+        err.message?.includes("audience")
+      ) {
+        console.error(
+          "[auth] This looks like a client ID mismatch: the token's audience doesn't match " +
+            "process.env.GOOGLE_CLIENT_ID on this server. Confirm it's identical to the " +
+            "VITE_GOOGLE_CLIENT_ID used to build the frontend, with no extra whitespace.",
+        );
+      }
+
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or expired Google credential",
+      });
     }
 
     if (!payload?.email) {
-      return res.status(401).json({ success: false, message: "Google account has no email on file" });
+      return res.status(401).json({
+        success: false,
+        message: "Google account has no email on file",
+      });
     }
     if (payload.email_verified === false) {
-      return res.status(401).json({ success: false, message: "Google email is not verified" });
+      return res
+        .status(401)
+        .json({ success: false, message: "Google email is not verified" });
     }
 
     const email = payload.email.toLowerCase();
@@ -366,7 +402,9 @@ export const googleLogin = async (req, res, next) => {
     }
 
     if (!user.is_active) {
-      return res.status(403).json({ success: false, message: "Account is deactivated" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Account is deactivated" });
     }
 
     const token = generateToken(user._id);

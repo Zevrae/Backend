@@ -26,27 +26,40 @@ import imageRoutes from "./routes/imageRoutes.js";
 const app = express();
 
 // --- Middleware ---
-app.use(helmet());
+app.use(
+  helmet({
+    // Match the frontend's COOP setting. This API isn't the window that
+    // opens the Google sign-in popup, so it isn't the direct cause of the
+    // postMessage warning — but keeping both origins consistent avoids
+    // surprises if this server ever serves any HTML (e.g. /api-docs) that
+    // interacts with a popup.
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  }),
+);
 
 // ✅ Improved CORS config
-const allowedOrigins = [
-  "https://www.zevrae.com",
-  "https://zevrae.com"
-];
+const allowedOrigins = ["https://www.zevrae.com", "https://zevrae.com"];
 
-app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 
 // ✅ Explicit preflight handler
 app.options("*", (req, res) => {
-  const origin = allowedOrigins.includes(req.headers.origin) ? req.headers.origin : allowedOrigins[0];
+  const origin = allowedOrigins.includes(req.headers.origin)
+    ? req.headers.origin
+    : allowedOrigins[0];
   res.header("Access-Control-Allow-Origin", origin);
   res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  );
   res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
   res.sendStatus(200);
 });
@@ -97,10 +110,15 @@ app.use("/api/images", imageRoutes);
 // --- Multer error handler (CORS-safe) ---
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
-    const origin = allowedOrigins.includes(req.headers.origin) ? req.headers.origin : allowedOrigins[0];
+    const origin = allowedOrigins.includes(req.headers.origin)
+      ? req.headers.origin
+      : allowedOrigins[0];
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Credentials", "true");
-    res.header("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    );
     res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
 
     return res.status(400).json({
