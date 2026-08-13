@@ -54,10 +54,13 @@ export const getProducts = async (req, res, next) => {
     if (req.query.subcategory) filter.subcategory = req.query.subcategory;
     if (req.query.status) filter.status = req.query.status;
     if (req.query.collection) filter.collections = req.query.collection;
-    if (req.query.inventory_mode) filter.inventory_mode = req.query.inventory_mode;
+    if (req.query.inventory_mode)
+      filter.inventory_mode = req.query.inventory_mode;
     if (req.query.search) filter.$text = { $search: req.query.search };
 
-    const sort = req.query.sort ? req.query.sort.split(",").join(" ") : "-created_at";
+    const sort = req.query.sort
+      ? req.query.sort.split(",").join(" ")
+      : "-created_at";
 
     const [items, total] = await Promise.all([
       Product.find(filter).sort(sort).skip(skip).limit(limit).lean(),
@@ -85,7 +88,9 @@ export const getProductById = async (req, res, next) => {
   try {
     const product = await Product.findById(req.params.id).lean();
     if (!product) {
-      return res.status(404).json({ success: false, message: "Product not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
     res.json({ success: true, data: product });
   } catch (err) {
@@ -103,10 +108,12 @@ export const updateProduct = async (req, res, next) => {
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, is_deleted: { $ne: true } },
       req.body,
-      { new: true, runValidators: true, context: 'query' }
+      { new: true, runValidators: true, context: "query" },
     );
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
     res.json({ success: true, data: product });
   } catch (err) {
@@ -118,12 +125,17 @@ export const updateProduct = async (req, res, next) => {
 // @route   DELETE /api/products/:id
 export const deleteProduct = async (req, res, next) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
+    const product = await Product.findOne({
+      _id: req.params.id,
+      is_deleted: { $ne: true },
+    });
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
     await product.softDelete();
-    res.json({ success: true, message: 'Product soft-deleted', data: product });
+    res.json({ success: true, message: "Product soft-deleted", data: product });
   } catch (err) {
     next(err);
   }
@@ -133,12 +145,16 @@ export const deleteProduct = async (req, res, next) => {
 // @route   PATCH /api/products/:id/restore
 export const restoreProduct = async (req, res, next) => {
   try {
-    const product = await Product.findOne({ _id: req.params.id }).setOptions({ withDeleted: true });
+    const product = await Product.findOne({ _id: req.params.id }).setOptions({
+      withDeleted: true,
+    });
     if (!product || !product.is_deleted) {
-      return res.status(404).json({ success: false, message: 'Deleted product not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Deleted product not found" });
     }
     await product.restore();
-    res.json({ success: true, message: 'Product restored', data: product });
+    res.json({ success: true, message: "Product restored", data: product });
   } catch (err) {
     next(err);
   }
@@ -151,17 +167,28 @@ export const uploadProductImages = async (req, res, next) => {
     if (!isAppwriteConfigured()) {
       return res.status(503).json({
         success: false,
-        message: 'Image storage is not configured on the server (missing Appwrite env vars)',
+        message:
+          "Image storage is not configured on the server (missing Appwrite env vars)",
       });
     }
 
-    const product = await Product.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
+    const product = await Product.findOne({
+      _id: req.params.id,
+      is_deleted: { $ne: true },
+    });
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
 
     if (!req.files || req.files.length === 0) {
-      return res.status(400).json({ success: false, message: 'No image files provided (use the "images" field)' });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: 'No image files provided (use the "images" field)',
+        });
     }
 
     const uploadedUrls = [];
@@ -180,7 +207,7 @@ export const uploadProductImages = async (req, res, next) => {
     const updated = await Product.findOneAndUpdate(
       { _id: req.params.id, is_deleted: { $ne: true } },
       { $push: { images: { $each: uploadedUrls } } },
-      { new: true }
+      { new: true },
     );
 
     res.status(201).json({ success: true, data: updated });
@@ -195,17 +222,26 @@ export const deleteProductImage = async (req, res, next) => {
   try {
     const { imageUrl } = req.body;
     if (!imageUrl) {
-      return res.status(400).json({ success: false, message: 'imageUrl is required' });
+      return res
+        .status(400)
+        .json({ success: false, message: "imageUrl is required" });
     }
 
-    const product = await Product.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
+    const product = await Product.findOne({
+      _id: req.params.id,
+      is_deleted: { $ne: true },
+    });
     if (!product) {
-      return res.status(404).json({ success: false, message: 'Product not found' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Product not found" });
     }
 
     const idx = product.images.indexOf(imageUrl);
     if (idx === -1) {
-      return res.status(404).json({ success: false, message: 'Image not found on this product' });
+      return res
+        .status(404)
+        .json({ success: false, message: "Image not found on this product" });
     }
 
     const fileId = extractFileIdFromUrl(imageUrl);
@@ -213,7 +249,7 @@ export const deleteProductImage = async (req, res, next) => {
       try {
         await deleteFileFromAppwrite(fileId);
       } catch (e) {
-        console.error('Failed to delete image from Appwrite:', e);
+        console.error("Failed to delete image from Appwrite:", e);
       }
     }
 
@@ -223,7 +259,7 @@ export const deleteProductImage = async (req, res, next) => {
     const updated = await Product.findOneAndUpdate(
       { _id: req.params.id, is_deleted: { $ne: true } },
       { $pull: { images: imageUrl } },
-      { new: true }
+      { new: true },
     );
 
     res.json({ success: true, data: updated });

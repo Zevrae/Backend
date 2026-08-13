@@ -2,29 +2,19 @@ import multer from "multer";
 
 const storage = multer.memoryStorage();
 
-// ✅ Expanded MIME types to cover Safari/iOS/macOS quirks and legacy variants
-const ALLOWED_MIME_TYPES = [
-  "image/jpeg",   // standard JPEG
-  "image/jpg",    // rare variant
-  "image/pjpeg",  // progressive JPEG (Safari/older browsers)
-  "image/png",    // standard PNG
-  "image/x-png",  // legacy PNG (Safari/IE)
-  "image/webp",   // WebP
-  "image/gif",    // standard GIF
-  "image/x-gif"   // legacy GIF
-];
-
 const fileFilter = (req, file, cb) => {
   const mimetype = file.mimetype.toLowerCase();
   console.log("Incoming file mimetype:", mimetype); // 🔍 Debug log
-  if (ALLOWED_MIME_TYPES.includes(mimetype)) {
+
+  // ✅ Check if the file is any type of image
+  if (mimetype.startsWith("image/")) {
     cb(null, true);
   } else {
     cb(
       new multer.MulterError(
         "LIMIT_UNEXPECTED_FILE",
-        "Only JPEG, PNG, WEBP, or GIF images are allowed"
-      )
+        "Only image files are allowed",
+      ),
     );
   }
 };
