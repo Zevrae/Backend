@@ -20,6 +20,7 @@ if (isConfigured) {
 
 const storage = new Storage(client);
 const BUCKET_ID = process.env.APPWRITE_BUCKET_ID;
+export { BUCKET_ID };
 export const REVIEW_BUCKET_ID = process.env.APPWRITE_REVIEW_BUCKET_ID;
 
 export const isAppwriteConfigured = () => isConfigured;
@@ -63,6 +64,18 @@ export const extractFileIdFromUrl = (url) => {
   return match ? match[1] : null;
 };
 
+// A file view URL is /storage/buckets/{bucketId}/files/{fileId}/view — the
+// bucket a file lives in is NOT always the product-images bucket (e.g.
+// try-on result images, uploaded by the separate try-on microservice, live
+// in their own bucket). Every place that fetches file bytes by URL must use
+// THIS bucket id, not an assumed/hardcoded one, or the lookup 404s against
+// the wrong bucket.
+export const extractBucketIdFromUrl = (url) => {
+  if (typeof url !== "string") return null;
+  const match = url.match(/\/buckets\/([^/]+)\/files\//);
+  return match ? match[1] : null;
+};
+
 export const isAppwriteFileUrl = (url) => {
   if (typeof url !== "string" || !process.env.APPWRITE_ENDPOINT) return false;
   return url.startsWith(process.env.APPWRITE_ENDPOINT) && extractFileIdFromUrl(url) !== null;
@@ -97,15 +110,27 @@ export const deleteFileFromAppwrite = async (fileId) => {
   await withTimeout(storage.deleteFile({ bucketId: BUCKET_ID, fileId }), "deleteFile (product image)");
 };
 
-export const getFileBuffer = async (fileId) => {
+export const getFileBuffer = async (bucketId, fileId) => {
   if (!isConfigured) {
     throw new Error(
       "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_BUCKET_ID"
     );
   }
 
-  const result = await withTimeout(storage.getFileDownload({ bucketId: BUCKET_ID, fileId }), "getFileDownload");
+  const result = await withTimeout(storage.getFileDownload({ bucketId, fileId }), "getFileDownload");
   return Buffer.isBuffer(result) ? result : Buffer.from(result);
+};
+
+// File metadata (includes the real mimeType) — used by the image proxy so
+// downloaded/served files get an accurate Content-Type instead of a guess
+// based on the URL's (often absent) file extension.
+export const getFileMeta = async (bucketId, fileId) => {
+  if (!isConfigured) {
+    throw new Error(
+      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_BUCKET_ID"
+    );
+  }
+  return withTimeout(storage.getFile({ bucketId, fileId }), "getFile (meta)");
 };
 
 // ---------- Review Images (CRUD) ----------

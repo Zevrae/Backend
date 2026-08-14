@@ -181,13 +181,14 @@ const options = {
             shipping_address: { $ref: '#/components/schemas/ShippingAddress' },
             subtotal: { type: 'integer' },
             shipping_fee: { type: 'integer' },
+            handling_fee: { type: 'integer' },
             discount_code: { type: 'string', nullable: true },
             discount_amount: { type: 'integer' },
             total: { type: 'integer' },
             payment_status: { type: 'string', enum: ['pending', 'paid', 'failed', 'refunded'] },
             order_status: {
               type: 'string',
-              enum: ['placed', 'processing', 'shipped', 'delivered', 'cancelled'],
+              enum: ['payment_pending', 'placed', 'processing', 'shipped', 'delivered', 'cancelled'],
             },
             razorpay_order_id: { type: 'string' },
             razorpay_payment_id: { type: 'string' },
@@ -258,11 +259,16 @@ const options = {
             code: { type: 'string', example: 'SAVE20' },
             type: { type: 'string', enum: ['Percentage', 'Fixed Amount'] },
             value: { type: 'number' },
+            limit_type: {
+              type: 'string',
+              enum: ['uses', 'time'],
+              description: "'uses': capped at usage.limit total redemptions. 'time': unlimited redemptions until expiry (usage.limit ignored).",
+            },
             usage: {
               type: 'object',
               properties: {
                 used: { type: 'integer' },
-                limit: { type: 'integer' },
+                limit: { type: 'integer', description: 'Required when limit_type is "uses"; ignored when "time".' },
               },
             },
             expiry: { type: 'string', format: 'date-time' },
@@ -271,15 +277,15 @@ const options = {
         },
         DiscountInput: {
           type: 'object',
-          required: ['code', 'type', 'value', 'usage', 'expiry'],
+          required: ['code', 'type', 'value', 'expiry'],
           properties: {
             code: { type: 'string', example: 'SAVE20' },
             type: { type: 'string', enum: ['Percentage', 'Fixed Amount'] },
             value: { type: 'number' },
+            limit_type: { type: 'string', enum: ['uses', 'time'], default: 'uses' },
             usage: {
               type: 'object',
-              required: ['limit'],
-              properties: { limit: { type: 'integer' } },
+              properties: { limit: { type: 'integer', description: 'Required unless limit_type is "time".' } },
             },
             expiry: { type: 'string', format: 'date-time' },
             status: { type: 'string', enum: ['Active', 'Expired'] },

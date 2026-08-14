@@ -3,6 +3,7 @@ import {
   createOrder,
   getOrders,
   getOrderById,
+  cancelOrder,
   updateOrderStatus,
 } from '../controllers/orderController.js';
 import { protect, authorize } from '../middleware/auth.js';
@@ -35,7 +36,7 @@ router.use(protect);
  *         schema: { type: integer }
  *       - in: query
  *         name: order_status
- *         schema: { type: string, enum: [placed, processing, shipped, delivered, cancelled] }
+ *         schema: { type: string, enum: [payment_pending, placed, processing, shipped, delivered, cancelled] }
  *       - in: query
  *         name: payment_status
  *         schema: { type: string, enum: [pending, paid, failed, refunded] }
@@ -94,6 +95,31 @@ router.get('/:id', getOrderById);
 
 /**
  * @swagger
+ * /orders/{id}/cancel:
+ *   post:
+ *     summary: Cancel an order (owner or admin). Self-serve cancellation is only available for paid online orders within 24 hours of placement.
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema: { type: string }
+ *     responses:
+ *       200:
+ *         description: Order cancelled
+ *       400:
+ *         description: Order isn't eligible for cancellation
+ *       403:
+ *         description: Forbidden
+ *       404:
+ *         description: Order not found
+ */
+router.post('/:id/cancel', cancelOrder);
+
+/**
+ * @swagger
  * /orders/{id}/status:
  *   patch:
  *     summary: Update order/payment status (admin only)
@@ -111,7 +137,7 @@ router.get('/:id', getOrderById);
  *           schema:
  *             type: object
  *             properties:
- *               order_status: { type: string, enum: [placed, processing, shipped, delivered, cancelled] }
+ *               order_status: { type: string, enum: [payment_pending, placed, processing, shipped, delivered, cancelled] }
  *               payment_status: { type: string, enum: [pending, paid, failed, refunded] }
  *     responses:
  *       200:

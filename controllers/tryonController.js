@@ -2,7 +2,7 @@ import axios from "axios";
 import FormData from "form-data";
 import Tryon from "../models/Tryon.js";
 import Product from "../models/Product.js";
-import { extractFileIdFromUrl, getFileBuffer } from "../utils/appwrite.js";
+import { extractFileIdFromUrl, getFileBuffer, BUCKET_ID } from "../utils/appwrite.js";
 import { MAX_TRYON_CLOTH_IMAGES } from "../middleware/upload.js";
 
 // A garment photo for a try-on request can come from either:
@@ -29,7 +29,7 @@ async function resolveClothBuffers(clothFiles, clothImageUrls, product) {
     if (!fileId) {
       throw new Error("Could not resolve a cloth image URL to an Appwrite file");
     }
-    const buffer = await getFileBuffer(fileId);
+    const buffer = await getFileBuffer(BUCKET_ID, fileId);
     buffers.push({ buffer, filename: `${fileId}.jpg`, contentType: "image/jpeg" });
   }
 

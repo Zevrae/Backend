@@ -5,8 +5,8 @@ import { applyDiscountCode, DiscountError } from '../utils/discounts.js';
 // @route   POST /api/discounts
 export const createDiscount = async (req, res, next) => {
   try {
-    const { code, type, value, usage, expiry, status } = req.body;
-    const discount = await Discount.create({ code, type, value, usage, expiry, status });
+    const { code, type, value, usage, limit_type, expiry, status } = req.body;
+    const discount = await Discount.create({ code, type, value, usage, limit_type, expiry, status });
     res.status(201).json({ success: true, data: discount });
   } catch (err) {
     next(err);
