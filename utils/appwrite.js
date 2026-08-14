@@ -78,12 +78,6 @@ export const extractFileIdFromUrl = (url) => {
   return legacyMatch ? legacyMatch[1] : null;
 };
 
-export const extractBucketIdFromUrl = (url) => {
-  if (typeof url !== "string") return null;
-  const match = url.match(/\/buckets\/([^/]+)\/files\//);
-  return match ? match[1] : null;
-};
-
 // A file view URL is /storage/buckets/{bucketId}/files/{fileId}/view — the
 // bucket a file lives in is NOT always the product-images bucket (e.g.
 // try-on result images, uploaded by the separate try-on microservice, live

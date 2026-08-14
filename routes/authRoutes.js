@@ -6,6 +6,8 @@ import {
   getMe,
   verifyEmail,
   resendVerification,
+  forgotPassword,
+  resetPassword,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/auth.js";
 import { loginLimiter, registerLimiter } from "../middleware/rateLimiter.js";
@@ -98,6 +100,57 @@ router.get("/verify-email/:token", verifyEmail);
  *           email is registered/already verified) to avoid leaking account existence.
  */
 router.post("/resend-verification", resendVerification);
+
+/**
+ * @swagger
+ * /auth/forgot-password:
+ *   post:
+ *     summary: Request a password reset email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [email]
+ *             properties:
+ *               email: { type: string, format: email }
+ *     responses:
+ *       200:
+ *         description: >
+ *           A generic success message is always returned (whether or not the
+ *           email is registered) to avoid leaking account existence.
+ */
+router.post("/forgot-password", registerLimiter, forgotPassword);
+
+/**
+ * @swagger
+ * /auth/reset-password:
+ *   post:
+ *     summary: Reset password using the token from the reset email
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [token, password]
+ *             properties:
+ *               token: { type: string }
+ *               password: { type: string, format: password }
+ *     responses:
+ *       200:
+ *         description: Password reset successfully
+ *       400:
+ *         description: Token invalid/expired, or password fails validation
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post("/reset-password", resetPassword);
 
 /**
  * @swagger

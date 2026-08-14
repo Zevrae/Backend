@@ -92,6 +92,16 @@ const UserSchema = new Schema(
       select: false,
     },
 
+    // --- Password reset ---
+    password_reset_token: {
+      type: String,
+      select: false,
+    },
+    password_reset_expires: {
+      type: Date,
+      select: false,
+    },
+
     // --- Soft delete support ---
     is_deleted: {
       type: Boolean,
@@ -108,6 +118,16 @@ const UserSchema = new Schema(
     versionKey: "__v",
   },
 );
+
+UserSchema.methods.generatePasswordResetToken = function () {
+  const rawToken = generateRawToken();
+  const hours = Number(process.env.PASSWORD_RESET_EXPIRES_HOURS) || 1;
+
+  this.password_reset_token = hashToken(rawToken);
+  this.password_reset_expires = new Date(Date.now() + hours * 60 * 60 * 1000);
+
+  return rawToken;
+};
 
 // Hash password before saving
 UserSchema.pre("save", async function hashPassword(next) {

@@ -110,6 +110,31 @@ const sendVerificationEmail = async (user, rawToken) => {
   });
 };
 
+const buildPasswordResetUrl = (rawToken) => {
+  const base = process.env.API_BASE_URL;
+  return `${base}/api/auth/reset-password/${rawToken}`;
+};
+
+const sendPasswordResetEmail = async (user, rawToken) => {
+  const url = buildPasswordResetUrl(rawToken);
+  const expiresIn = process.env.PASSWORD_RESET_EXPIRES_HOURS || 1;
+
+  const html = `
+    <!DOCTYPE html>
+    <html><body>
+      <p>Hi ${user.name},</p>
+      <p>We received a request to reset your Zevrae password. Click below to choose a new one:</p>
+      <p><a href="${url}">Reset My Password</a></p>
+      <p>This link expires in ${expiresIn} hour(s). If you didn't request this, you can safely ignore this email — your password won't be changed.</p>
+    </body></html>
+  `;
+
+  await sendEmail({
+    to: user.email,
+    subject: "Reset your Zevrae password",
+    html,
+  });
+};
 const validatePassword = (password) => {
   const errors = [];
 
@@ -447,6 +472,88 @@ export const googleLogin = async (req, res, next) => {
 
     const token = generateToken(user._id);
     res.json({ success: true, token, data: user.toSafeObject() });
+  } catch (err) {
+    next(err);
+  }
+};
+// @desc    Request a password reset email
+// @route   POST /api/auth/forgot-password
+export const forgotPassword = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Email is required" });
+    }
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    // Same response whether or not the account exists — avoids leaking
+    // which emails are registered (email enumeration).
+    const genericResponse = {
+      success: true,
+      message:
+        "If that email is registered, a password reset link has been sent.",
+    };
+
+    if (!user || user.auth_provider !== "local") {
+      // Google-only accounts have no password to reset — still return the
+      // generic response so this endpoint can't be used to distinguish
+      // auth_provider either.
+      return res.json(genericResponse);
+    }
+
+    const rawToken = user.generatePasswordResetToken();
+    await user.save({ validateBeforeSave: false });
+    await sendPasswordResetEmail(user, rawToken);
+
+    res.json(genericResponse);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Reset password using the token from the reset email
+// @route   POST /api/auth/reset-password
+export const resetPassword = async (req, res, next) => {
+  try {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res
+        .status(400)
+        .json({ success: false, message: "token and password are required" });
+    }
+
+    const passwordErrors = validatePassword(password);
+    if (passwordErrors.length > 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: passwordErrors[0] });
+    }
+
+    const hashed = hashToken(token);
+    const user = await User.findOne({
+      password_reset_token: hashed,
+      password_reset_expires: { $gt: new Date() },
+    }).select("+password_reset_token +password_reset_expires");
+
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: "Reset link is invalid or has expired",
+      });
+    }
+
+    user.password = password; // pre('save') hook re-hashes this automatically
+    user.password_reset_token = undefined;
+    user.password_reset_expires = undefined;
+    await user.save();
+
+    res.json({
+      success: true,
+      message: "Password has been reset. You can now log in.",
+    });
   } catch (err) {
     next(err);
   }
