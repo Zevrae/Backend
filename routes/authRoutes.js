@@ -1,6 +1,14 @@
-import express from 'express';
-import { register, login, googleLogin, getMe, verifyEmail, resendVerification } from '../controllers/authController.js';
-import { protect } from '../middleware/auth.js';
+import express from "express";
+import {
+  register,
+  login,
+  googleLogin,
+  getMe,
+  verifyEmail,
+  resendVerification,
+} from "../controllers/authController.js";
+import { protect } from "../middleware/auth.js";
+import { loginLimiter, registerLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
@@ -42,7 +50,7 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/register', register);
+router.post("/register", registerLimiter, register);
 
 /**
  * @swagger
@@ -66,7 +74,7 @@ router.post('/register', register);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/verify-email/:token', verifyEmail);
+router.get("/verify-email/:token", verifyEmail);
 
 /**
  * @swagger
@@ -89,7 +97,7 @@ router.get('/verify-email/:token', verifyEmail);
  *           A generic success message is always returned (whether or not the
  *           email is registered/already verified) to avoid leaking account existence.
  */
-router.post('/resend-verification', resendVerification);
+router.post("/resend-verification", resendVerification);
 
 /**
  * @swagger
@@ -124,7 +132,7 @@ router.post('/resend-verification', resendVerification);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/login', login);
+router.post("/login", loginLimiter, login);
 
 /**
  * @swagger
@@ -168,7 +176,7 @@ router.post('/login', login);
  *       503:
  *         description: Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)
  */
-router.post('/google', googleLogin);
+router.post("/google", loginLimiter, googleLogin);
 
 /**
  * @swagger
@@ -191,6 +199,6 @@ router.post('/google', googleLogin);
  *       401:
  *         description: Not authorized
  */
-router.get('/me', protect, getMe);
+router.get("/me", protect, getMe);
 
 export default router;

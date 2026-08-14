@@ -6,9 +6,9 @@ const client = new Client();
 // Configuration check
 const isConfigured = Boolean(
   process.env.APPWRITE_ENDPOINT &&
-    process.env.APPWRITE_PROJECT_ID &&
-    process.env.APPWRITE_API_KEY &&
-    process.env.APPWRITE_BUCKET_ID
+  process.env.APPWRITE_PROJECT_ID &&
+  process.env.APPWRITE_API_KEY &&
+  process.env.APPWRITE_BUCKET_ID,
 );
 
 if (isConfigured) {
@@ -19,7 +19,7 @@ if (isConfigured) {
 }
 
 const storage = new Storage(client);
-const BUCKET_ID = process.env.APPWRITE_BUCKET_ID;
+export const BUCKET_ID = process.env.APPWRITE_BUCKET_ID;
 export const REVIEW_BUCKET_ID = process.env.APPWRITE_REVIEW_BUCKET_ID;
 
 export const isAppwriteConfigured = () => isConfigured;
@@ -43,8 +43,13 @@ const withTimeout = async (promise, label) => {
       promise,
       new Promise((_, reject) => {
         timer = setTimeout(
-          () => reject(new Error(`Appwrite ${label} timed out after ${APPWRITE_TIMEOUT_MS}ms — check the production server's outbound network access to APPWRITE_ENDPOINT (${process.env.APPWRITE_ENDPOINT}).`)),
-          APPWRITE_TIMEOUT_MS
+          () =>
+            reject(
+              new Error(
+                `Appwrite ${label} timed out after ${APPWRITE_TIMEOUT_MS}ms — check the production server's outbound network access to APPWRITE_ENDPOINT (${process.env.APPWRITE_ENDPOINT}).`,
+              ),
+            ),
+          APPWRITE_TIMEOUT_MS,
         );
       }),
     ]);
@@ -54,27 +59,44 @@ const withTimeout = async (promise, label) => {
 };
 
 // ---------- Helpers ----------
-const buildFileViewUrl = (bucketId, fileId) =>
-  `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucketId}/files/${fileId}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+// ✅ FIXED — internal path only, no Appwrite details exposed
+export const buildProductFileViewUrl = (fileId) =>
+  `/api/images/product/${fileId}`;
+export const buildReviewFileViewUrl = (fileId) =>
+  `/api/images/review/${fileId}`;
 
 export const extractFileIdFromUrl = (url) => {
   if (typeof url !== "string") return null;
-  const match = url.match(/\/files\/([^/]+)\/(?:view|download|preview)/);
+  // New internal format: /api/images/product/<fileId> or /api/images/review/<fileId>
+  const internalMatch = url.match(
+    /\/api\/images\/(?:product|review)\/([^/?]+)/,
+  );
+  if (internalMatch) return internalMatch[1];
+  // Legacy raw Appwrite URL format, for images stored before this fix
+  const legacyMatch = url.match(/\/files\/([^/]+)\/(?:view|download|preview)/);
+  return legacyMatch ? legacyMatch[1] : null;
+};
+
+export const extractBucketIdFromUrl = (url) => {
+  if (typeof url !== "string") return null;
+  const match = url.match(/\/buckets\/([^/]+)\/files\//);
   return match ? match[1] : null;
 };
 
 export const isAppwriteFileUrl = (url) => {
   if (typeof url !== "string" || !process.env.APPWRITE_ENDPOINT) return false;
-  return url.startsWith(process.env.APPWRITE_ENDPOINT) && extractFileIdFromUrl(url) !== null;
+  return (
+    url.startsWith(process.env.APPWRITE_ENDPOINT) &&
+    extractFileIdFromUrl(url) !== null
+  );
 };
 
 // ---------- Product Images ----------
-export const buildProductFileViewUrl = (fileId) => buildFileViewUrl(BUCKET_ID, fileId);
 
 export const uploadFileToAppwrite = async (buffer, filename) => {
   if (!isConfigured) {
     throw new Error(
-      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_BUCKET_ID"
+      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_BUCKET_ID",
     );
   }
 
@@ -86,7 +108,7 @@ export const uploadFileToAppwrite = async (buffer, filename) => {
       file,
       permissions: [Permission.read(Role.any())],
     }),
-    "createFile (product image)"
+    "createFile (product image)",
   );
 
   return buildProductFileViewUrl(created.$id);
@@ -94,27 +116,32 @@ export const uploadFileToAppwrite = async (buffer, filename) => {
 
 export const deleteFileFromAppwrite = async (fileId) => {
   if (!isConfigured) return;
-  await withTimeout(storage.deleteFile({ bucketId: BUCKET_ID, fileId }), "deleteFile (product image)");
+  await withTimeout(
+    storage.deleteFile({ bucketId: BUCKET_ID, fileId }),
+    "deleteFile (product image)",
+  );
 };
 
 export const getFileBuffer = async (fileId) => {
   if (!isConfigured) {
     throw new Error(
-      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_BUCKET_ID"
+      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_BUCKET_ID",
     );
   }
 
-  const result = await withTimeout(storage.getFileDownload({ bucketId: BUCKET_ID, fileId }), "getFileDownload");
+  const result = await withTimeout(
+    storage.getFileDownload({ bucketId: BUCKET_ID, fileId }),
+    "getFileDownload",
+  );
   return Buffer.isBuffer(result) ? result : Buffer.from(result);
 };
 
 // ---------- Review Images (CRUD) ----------
-export const buildReviewFileViewUrl = (fileId) => buildFileViewUrl(REVIEW_BUCKET_ID, fileId);
 
 export const uploadReviewFileToAppwrite = async (buffer, filename) => {
   if (!isConfigured || !REVIEW_BUCKET_ID) {
     throw new Error(
-      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_REVIEW_BUCKET_ID"
+      "Appwrite is not configured: set APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, APPWRITE_REVIEW_BUCKET_ID",
     );
   }
 
@@ -126,7 +153,7 @@ export const uploadReviewFileToAppwrite = async (buffer, filename) => {
       file,
       permissions: [Permission.read(Role.any())],
     }),
-    "createFile (review image)"
+    "createFile (review image)",
   );
 
   return buildReviewFileViewUrl(created.$id);
@@ -136,7 +163,10 @@ export const getReviewFileMeta = async (fileId) => {
   if (!isConfigured || !REVIEW_BUCKET_ID) {
     throw new Error("Appwrite not configured for review bucket");
   }
-  return withTimeout(storage.getFile({ bucketId: REVIEW_BUCKET_ID, fileId }), "getFile (review image)");
+  return withTimeout(
+    storage.getFile({ bucketId: REVIEW_BUCKET_ID, fileId }),
+    "getFile (review image)",
+  );
 };
 
 export const updateReviewFile = async (fileId, buffer, filename) => {
@@ -145,7 +175,10 @@ export const updateReviewFile = async (fileId, buffer, filename) => {
   }
 
   // Delete old file
-  await withTimeout(storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId }), "deleteFile (review image, old)");
+  await withTimeout(
+    storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId }),
+    "deleteFile (review image, old)",
+  );
 
   // Upload new file
   const file = InputFile.fromBuffer(buffer, filename);
@@ -156,7 +189,7 @@ export const updateReviewFile = async (fileId, buffer, filename) => {
       file,
       permissions: [Permission.read(Role.any())],
     }),
-    "createFile (review image, replacement)"
+    "createFile (review image, replacement)",
   );
 
   return buildReviewFileViewUrl(created.$id);
@@ -164,5 +197,8 @@ export const updateReviewFile = async (fileId, buffer, filename) => {
 
 export const deleteReviewFile = async (fileId) => {
   if (!isConfigured || !REVIEW_BUCKET_ID) return;
-  await withTimeout(storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId }), "deleteFile (review image)");
+  await withTimeout(
+    storage.deleteFile({ bucketId: REVIEW_BUCKET_ID, fileId }),
+    "deleteFile (review image)",
+  );
 };

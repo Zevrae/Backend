@@ -1,6 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import { apiLimiter } from "./middleware/rateLimiter.js";
 import helmet from "helmet";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
@@ -25,6 +26,7 @@ import imageRoutes from "./routes/imageRoutes.js";
 
 const app = express();
 
+app.use("/api/", apiLimiter);
 // --- Middleware ---
 app.use(
   helmet({
@@ -42,9 +44,16 @@ const allowedOrigins = ["https://www.zevrae.com", "https://zevrae.com"];
 
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow requests with no origin (server-to-server, curl, mobile apps)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );

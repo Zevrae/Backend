@@ -1,5 +1,9 @@
 import express from "express";
-import { proxyImage } from "../controllers/imageController.js";
+import {
+  proxyImage,
+  getProductImage,
+  getReviewImage,
+} from "../controllers/imageController.js";
 
 const router = express.Router();
 
@@ -34,6 +38,8 @@ const router = express.Router();
  *       400:
  *         description: Missing or non-Appwrite url
  */
+router.get("/product/:fileId", getProductImage);
+router.get("/review/:fileId", getReviewImage);
 router.get("/proxy", proxyImage);
 
 export default router;

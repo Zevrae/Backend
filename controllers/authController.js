@@ -110,6 +110,38 @@ const sendVerificationEmail = async (user, rawToken) => {
   });
 };
 
+const validatePassword = (password) => {
+  const errors = [];
+
+  if (password.length < 8)
+    errors.push("Password must be at least 8 characters");
+  if (!/[A-Z]/.test(password))
+    errors.push("Password must contain at least one uppercase letter");
+  if (!/[a-z]/.test(password))
+    errors.push("Password must contain at least one lowercase letter");
+  if (!/[0-9]/.test(password))
+    errors.push("Password must contain at least one number");
+
+  const commonPasswords = [
+    "password",
+    "12345678",
+    "123456789",
+    "qwerty123",
+    "abc12345",
+    "password1",
+    "iloveyou",
+    "11111111",
+    "00000000",
+    "admin123",
+  ];
+  if (commonPasswords.includes(password.toLowerCase()))
+    errors.push(
+      "This password is too common. Please choose a stronger password",
+    );
+
+  return errors;
+};
+
 export const register = async (req, res, next) => {
   try {
     const { name, email, password, phone } = req.body;
@@ -119,6 +151,13 @@ export const register = async (req, res, next) => {
       return res
         .status(409)
         .json({ success: false, message: "Email is already registered" });
+    }
+
+    const passwordErrors = validatePassword(password || "");
+    if (passwordErrors.length > 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: passwordErrors[0] });
     }
 
     const user = await User.create({ name, email, password, phone });
