@@ -206,7 +206,19 @@ export const getOrders = async (req, res, next) => {
     const skip = (page - 1) * limit;
 
     const filter = req.user.role === "admin" ? {} : { user: req.user._id };
-    if (req.query.order_status) filter.order_status = req.query.order_status;
+    if (req.query.order_status) {
+      filter.order_status = req.query.order_status;
+    } else if (req.user.role === "admin") {
+      // An online order that's still waiting on payment confirmation isn't
+      // a real order yet from the business's point of view — it might be
+      // an abandoned or failed Razorpay checkout that never completes. The
+      // admin orders panel hides these by default so they don't clutter
+      // the list; pass ?order_status=payment_pending explicitly to see
+      // them (e.g. for support/troubleshooting). The customer's own order
+      // history is unaffected — they should still see "Awaiting payment"
+      // for their own in-progress checkout.
+      filter.order_status = { $ne: "payment_pending" };
+    }
     if (req.query.payment_status)
       filter.payment_status = req.query.payment_status;
     if (req.query.payment_method)
