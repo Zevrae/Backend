@@ -11,6 +11,17 @@ import { sendEmail } from "../utils/sendEmail.js";
 const SHIPPING_FEE = 19;
 const FREE_SHIPPING_THRESHOLD = 1000;
 
+// Flat handling charge added to Cash on Delivery orders (in rupees). Covers
+// the extra cost of collecting payment at the doorstep. Keep in sync with
+// the frontend checkout summary if this ever changes.
+const COD_HANDLING_FEE = 15;
+
+// How long after placement a customer can still self-serve cancel an
+// online-paid order. Cash on Delivery orders aren't eligible for self-serve
+// cancellation here (nothing has been charged yet — the customer can simply
+// refuse delivery), so this window only applies to `payment_method: 'online'`.
+const CANCELLATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 // A product's demand counter crossing this many units-ordered triggers a
 // "possible delay" heads-up email to the customer who just ordered it.
 // Set DEMAND_ALERT_THRESHOLD=0 to disable.
@@ -107,7 +118,14 @@ export const createOrder = async (req, res, next) => {
     // else. Mixing units between here and there was the root cause of the
     // "order total is 100x too big" bug.
     const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
-    const total = Math.max(0, subtotal - discountAmount + shippingFee);
+    const handlingFee = method === "cod" ? COD_HANDLING_FEE : 0;
+    const total = Math.max(0, subtotal - discountAmount + shippingFee + handlingFee);
+
+    // Online orders aren't "placed" until the payment actually succeeds —
+    // they sit in payment_pending until paymentController.verifyPayment (or
+    // the Razorpay webhook) confirms the charge went through. COD orders
+    // have nothing to wait on, so they're placed immediately.
+    const initialOrderStatus = method === "cod" ? "placed" : "payment_pending";
 
     const order = await Order.create({
       user: req.user._id,
@@ -121,10 +139,12 @@ export const createOrder = async (req, res, next) => {
       shipping_address,
       subtotal,
       shipping_fee: shippingFee,
+      handling_fee: handlingFee,
       discount_code: appliedCode,
       discount_amount: discountAmount,
       total,
       payment_method: method,
+      order_status: initialOrderStatus,
     });
 
     // Empty the cart once the order record exists (payment is handled separately)
@@ -232,6 +252,72 @@ export const getOrderById = async (req, res, next) => {
     }
 
     res.json({ success: true, data: order });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// @desc    Cancel an order (owner or admin). Self-serve cancellation is only
+//          offered for online-paid orders, and only within a 24-hour window
+//          of when the order was placed — after that (or for COD, or once
+//          an order has shipped) the customer needs to contact support.
+// @route   POST /api/orders/:id/cancel
+export const cancelOrder = async (req, res, next) => {
+  try {
+    const order = await Order.findById(req.params.id);
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Order not found" });
+    }
+
+    const isOwner = order.user.toString() === req.user._id.toString();
+    if (req.user.role !== "admin" && !isOwner) {
+      return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+
+    if (order.order_status === "cancelled") {
+      return res
+        .status(400)
+        .json({ success: false, message: "This order is already cancelled" });
+    }
+    if (["shipped", "delivered"].includes(order.order_status)) {
+      return res.status(400).json({
+        success: false,
+        message: `This order has already been ${order.order_status} and can no longer be cancelled.`,
+      });
+    }
+
+    // Admins can override; self-serve cancellation (by the order's owner)
+    // is restricted to paid online orders, within the cancellation window.
+    if (req.user.role !== "admin") {
+      if (order.payment_method !== "online") {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Cash on Delivery orders can't be cancelled online — please contact support, or simply decline the order at delivery.",
+        });
+      }
+      if (order.payment_status !== "paid") {
+        return res.status(400).json({
+          success: false,
+          message: "This order can't be cancelled until payment is confirmed.",
+        });
+      }
+      const elapsedMs = Date.now() - order.created_at.getTime();
+      if (elapsedMs > CANCELLATION_WINDOW_MS) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "The 24-hour cancellation window for this order has passed. Please contact support.",
+        });
+      }
+    }
+
+    order.order_status = "cancelled";
+    await order.save();
+
+    res.json({ success: true, message: "Order cancelled", data: order });
   } catch (err) {
     next(err);
   }

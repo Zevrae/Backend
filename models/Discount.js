@@ -27,9 +27,27 @@ const DiscountSchema = new Schema(
         message: 'Percentage value cannot exceed 100',
       },
     },
+    // Which rule caps redemption:
+    //  - 'uses': a fixed total number of redemptions (usage.limit), for as
+    //    long as the code stays Active and hasn't passed its expiry.
+    //  - 'time': unlimited redemptions, but only until the expiry date —
+    //    usage.limit is ignored for this mode.
+    limit_type: {
+      type: String,
+      enum: ['uses', 'time'],
+      default: 'uses',
+    },
     usage: {
       used: { type: Number, default: 0, min: 0 },
-      limit: { type: Number, required: true, min: 1 },
+      limit: {
+        type: Number,
+        min: 1,
+        // Only required for 'uses'-mode codes; a 'time'-mode code has no
+        // redemption cap so a limit is meaningless for it.
+        required: function () {
+          return this.limit_type !== 'time';
+        },
+      },
     },
     expiry: {
       type: Date,
@@ -73,9 +91,12 @@ DiscountSchema.methods.softDelete = function () {
 };
 
 // True if the code is currently redeemable: marked Active, not past its
-// expiry date, and hasn't hit its usage limit.
+// expiry date, and — for 'uses'-mode codes only — hasn't hit its usage
+// limit. 'time'-mode codes have unlimited redemptions up until expiry.
 DiscountSchema.methods.isRedeemable = function () {
-  return this.status === 'Active' && this.expiry > new Date() && this.usage.used < this.usage.limit;
+  if (this.status !== 'Active' || this.expiry <= new Date()) return false;
+  if (this.limit_type === 'time') return true;
+  return this.usage.used < this.usage.limit;
 };
 
 // Computes the discount amount for a given subtotal (same integer smallest-

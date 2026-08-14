@@ -34,7 +34,13 @@ export const verifyPayment = async (req, res, next) => {
     }
 
     order.payment_status = 'paid';
-    order.order_status = 'processing';
+    // Only a successful payment promotes the order out of payment_pending —
+    // this is the moment it actually becomes "placed". If it's already
+    // moved on (e.g. the webhook beat this call to it), leave order_status
+    // alone rather than stomping on further progress.
+    if (order.order_status === 'payment_pending') {
+      order.order_status = 'placed';
+    }
     order.razorpay_payment_id = razorpay_payment_id;
     order.razorpay_signature = razorpay_signature;
     await order.save();
@@ -70,7 +76,7 @@ export const razorpayWebhook = async (req, res, next) => {
       if (order) {
         if (event === 'payment.captured') {
           order.payment_status = 'paid';
-          order.order_status = order.order_status === 'placed' ? 'processing' : order.order_status;
+          order.order_status = order.order_status === 'payment_pending' ? 'placed' : order.order_status;
           order.razorpay_payment_id = paymentEntity.id;
         } else if (event === 'payment.failed') {
           order.payment_status = 'failed';

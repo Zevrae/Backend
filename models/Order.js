@@ -56,6 +56,9 @@ const OrderSchema = new Schema(
       default: 0,
       min: 0,
     },
+    // Flat handling charge added to cash-on-delivery orders (in rupees,
+    // same convention as every other money field on this document).
+    handling_fee: { type: Number, default: 0, min: 0 },
     total: { type: Number, required: true, min: 0 },
     payment_method: {
       type: String,
@@ -80,10 +83,15 @@ const OrderSchema = new Schema(
       type: String,
       select: false,
     },
+    // "payment_pending" is the initial state for an online-payment order —
+    // it must NOT be treated/displayed as "placed" until the payment
+    // actually succeeds (see paymentController.verifyPayment / webhook,
+    // which flip it to "placed"). COD orders skip straight to "placed"
+    // since there's no online payment to wait on.
     order_status: {
       type: String,
-      enum: ['placed', 'processing', 'shipped', 'delivered', 'cancelled'],
-      default: 'placed',
+      enum: ['payment_pending', 'placed', 'processing', 'shipped', 'delivered', 'cancelled'],
+      default: 'payment_pending',
       index: true,
     },
     is_deleted: {
