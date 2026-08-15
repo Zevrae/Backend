@@ -111,8 +111,13 @@ const sendVerificationEmail = async (user, rawToken) => {
 };
 
 const buildPasswordResetUrl = (rawToken) => {
-  const base = process.env.API_BASE_URL;
-  return `${base}/api/auth/reset-password/${rawToken}`;
+  // FRONTEND_URL takes priority (set this in .env on the server, e.g. https://zevrae.com).
+  // Fallback: derive from API_BASE_URL by stripping the "api." subdomain.
+  const frontendUrl =
+    process.env.FRONTEND_URL ||
+    (process.env.API_BASE_URL || "").replace("://api.", "://").replace(":5000", ":3000") ||
+    "http://localhost:3000";
+  return `${frontendUrl}/reset-password/${rawToken}`;
 };
 
 const sendPasswordResetEmail = async (user, rawToken) => {
