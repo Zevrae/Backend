@@ -7,32 +7,24 @@ import { applyDiscountCode, DiscountError } from "../utils/discounts.js";
 import { sendEmail } from "../utils/sendEmail.js";
 
 // Flat shipping fee (in rupees) for orders at/under the free-shipping
-// threshold. Matches the frontend's checkout summary exactly — keep these
-// in sync if either changes. Rule is strictly "subtotal > threshold", so a
-// subtotal exactly equal to the threshold still pays shipping.
+// threshold. Matches the frontend's checkout summary exactly.
 export const SHIPPING_FEE = 59;
 export const FREE_SHIPPING_THRESHOLD = 999;
 
-// Flat handling charge added to Cash on Delivery orders (in rupees). Covers
-// the extra cost of collecting payment at the doorstep. Keep in sync with
-// the frontend checkout summary if this ever changes.
+// Flat handling charge added to Cash on Delivery orders (in rupees).
 export const COD_HANDLING_FEE = 15;
 
 // How long after placement a customer can still self-serve cancel an
-// online-paid order. Cash on Delivery orders aren't eligible for self-serve
-// cancellation here (nothing has been charged yet — the customer can simply
-// refuse delivery), so this window only applies to `payment_method: 'online'`.
+// online-paid order.
 const CANCELLATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // A product's demand counter crossing this many units-ordered triggers a
 // "possible delay" heads-up email to the customer who just ordered it.
-// Set DEMAND_ALERT_THRESHOLD=0 to disable.
 const DEMAND_ALERT_THRESHOLD = Number(process.env.DEMAND_ALERT_THRESHOLD) || 50;
 
 // Best-effort: bump each ordered item's demand counter and, if a product has
 // just crossed the alert threshold, let the customer know their order might
 // be delayed. Never allowed to fail checkout — errors are swallowed.
-// EXPORTED so it can be called from the payment verification/webhook controllers.
 export const recordDemandAndNotify = async (order, user) => {
   try {
     const highDemandItems = [];
@@ -69,7 +61,7 @@ export const recordDemandAndNotify = async (order, user) => {
   }
 };
 
-// @desc    Place an order from the current cart, and open a Razorpay order for payment
+// @desc    Initiate checkout (Freeze state for online, or place immediately for COD)
 // @route   POST /api/orders
 export const createOrder = async (req, res, next) => {
   try {
@@ -86,14 +78,9 @@ export const createOrder = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Cart is empty" });
     }
 
-    // The cart only stores a *snapshot* of each product's name/price taken
-    // at the moment it was added (see cartController.addItem) — it is never
-    // trustworthy as-is for what the customer is actually charged. Re-fetch
-    // every product fresh right now and rebuild the order's line items from
-    // that, so the price paid always matches the database's current price,
-    // and anything that went inactive/was deleted since it was added to the
-    // cart is caught before an order (or a Razorpay charge) is created for it.
-    const productIds = [...new Set(cart.items.map((item) => item.product.toString()))];
+    const productIds = [
+      ...new Set(cart.items.map((item) => item.product.toString())),
+    ];
     const products = await Product.find({ _id: { $in: productIds } });
     const productById = new Map(products.map((p) => [p._id.toString(), p]));
 
@@ -115,7 +102,7 @@ export const createOrder = async (req, res, next) => {
 
       const availableStock =
         product.inventory_mode === "size"
-          ? product.size_stock?.get(item.size) ?? 0
+          ? (product.size_stock?.get(item.size) ?? 0)
           : product.stock_quantity;
       if (availableStock < item.quantity) {
         return res.status(400).json({
@@ -127,8 +114,6 @@ export const createOrder = async (req, res, next) => {
       orderItems.push({
         product: product._id,
         name: product.name,
-        // Authoritative, server-fetched price — the cart's copy is only
-        // ever used to know *which* products/quantities are in the cart.
         price: product.price,
         size: item.size,
         quantity: item.quantity,
@@ -140,11 +125,6 @@ export const createOrder = async (req, res, next) => {
       0,
     );
 
-    // Apply a discount code, if provided. This consumes one use of the code
-    // immediately — if Razorpay order creation fails afterwards, the use
-    // isn't refunded automatically (no multi-document transaction here,
-    // since that requires a Mongo replica set). Acceptable tradeoff for now;
-    // revisit with transactions if this becomes a real support burden.
     let discountAmount = 0;
     let appliedCode = null;
     if (discount_code) {
@@ -162,94 +142,89 @@ export const createOrder = async (req, res, next) => {
       }
     }
 
-    // Everything on the Order document — subtotal, shipping_fee,
-    // discount_amount, total — is stored in rupees, matching Product.price
-    // and every other money value shown in the app. Razorpay is the only
-    // API that wants the smallest currency unit (paise for INR); that
-    // conversion happens once, right when we call it below, and nowhere
-    // else. Mixing units between here and there was the root cause of the
-    // "order total is 100x too big" bug.
     const shippingFee = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
     const handlingFee = method === "cod" ? COD_HANDLING_FEE : 0;
-    const total = Math.max(0, subtotal - discountAmount + shippingFee + handlingFee);
+    const total = Math.max(
+      0,
+      subtotal - discountAmount + shippingFee + handlingFee,
+    );
 
-    // Online orders aren't "placed" until the payment actually succeeds —
-    // they sit in payment_pending until paymentController.verifyPayment (or
-    // the Razorpay webhook) confirms the charge went through. COD orders
-    // have nothing to wait on, so they're placed immediately.
-    const initialOrderStatus = method === "cod" ? "placed" : "payment_pending";
-
-    const order = await Order.create({
-      user: req.user._id,
-      items: orderItems,
-      shipping_address,
-      subtotal,
-      shipping_fee: shippingFee,
-      handling_fee: handlingFee,
-      discount_code: appliedCode,
-      discount_amount: discountAmount,
-      total,
-      payment_method: method,
-      order_status: initialOrderStatus,
-    });
-
-    // Cash on Delivery orders are placed immediately — there's no payment
-    // left to wait on, so it's safe to empty the cart right now. Online
-    // orders are deliberately NOT cleared here: payment hasn't succeeded
-    // yet at this point, and clearing the cart before that would lose the
-    // customer's items if the payment fails, they abandon Razorpay
-    // Checkout, or their browser closes mid-payment. For online orders the
-    // cart is instead cleared the moment payment_status actually flips to
-    // 'paid' — see paymentController.verifyPayment / razorpayWebhook.
+    // ==========================================
+    // PATH A: CASH ON DELIVERY
+    // Safe to create the order document immediately
+    // ==========================================
     if (method === "cod") {
-      cart.items = [];
-      await cart.save();
-    }
-
-    let razorpayOrder = null;
-    if (method === "online" && isRazorpayConfigured()) {
-      const rp = getRazorpay();
-      // Razorpay requires the amount in the smallest currency unit (paise
-      // for INR) — this is the ONLY place that conversion should happen.
-      const amountInPaise = Math.round(total * 100);
-      razorpayOrder = await rp.orders.create({
-        amount: amountInPaise,
-        currency: process.env.RAZORPAY_CURRENCY || "INR",
-        receipt: order._id.toString(),
-        notes: {
-          orderId: order._id.toString(),
-          userId: req.user._id.toString(),
-        },
+      const order = await Order.create({
+        user: req.user._id,
+        items: orderItems,
+        shipping_address,
+        subtotal,
+        shipping_fee: shippingFee,
+        handling_fee: handlingFee,
+        discount_code: appliedCode,
+        discount_amount: discountAmount,
+        total,
+        payment_method: method,
+        order_status: "placed",
+        payment_status: "pending", // Payment collected at door
       });
 
-      order.razorpay_order_id = razorpayOrder.id;
-      await order.save();
-    }
+      cart.items = [];
+      await cart.save();
 
-    // FIX: Only fire demand alerts and emails immediately for Cash on Delivery.
-    // Online orders will trigger this inside the /verify endpoint or webhook 
-    // ONLY after Razorpay confirms the payment is successful.
-    if (method === "cod") {
       recordDemandAndNotify(order, req.user);
+
+      return res.status(201).json({
+        success: true,
+        data: order,
+        message:
+          "Order created — cash on delivery, no online payment required.",
+      });
     }
 
-    res.status(201).json({
+    // ==========================================
+    // PATH B: ONLINE PAYMENT
+    // Freeze checkout state to Cart, wait for webhook/verify
+    // ==========================================
+    if (!isRazorpayConfigured()) {
+      return res.status(500).json({
+        success: false,
+        message: "Payment gateway is not configured on the server.",
+      });
+    }
+
+    const rp = getRazorpay();
+    const amountInPaise = Math.round(total * 100);
+    const razorpayOrder = await rp.orders.create({
+      amount: amountInPaise,
+      currency: process.env.RAZORPAY_CURRENCY || "INR",
+      notes: {
+        userId: req.user._id.toString(),
+      },
+    });
+
+    cart.checkout_state = {
+      razorpay_order_id: razorpayOrder.id,
+      shipping_address,
+      discount_code: appliedCode,
+      discount_amount: discountAmount,
+      handling_fee: handlingFee,
+      shipping_fee: shippingFee,
+      subtotal,
+      total,
+    };
+    await cart.save();
+
+    return res.status(200).json({
       success: true,
-      data: order,
-      payment: razorpayOrder
-        ? {
-            provider: "razorpay",
-            key_id: process.env.RAZORPAY_KEY_ID,
-            order_id: razorpayOrder.id,
-            amount: razorpayOrder.amount,
-            currency: razorpayOrder.currency,
-          }
-        : null,
-      message: razorpayOrder
-        ? "Order created — use the payment details to open Razorpay Checkout, then call POST /api/payments/verify."
-        : method === "cod"
-          ? "Order created — cash on delivery, no online payment required."
-          : "Order created. Payment gateway is not configured on the server.",
+      payment: {
+        provider: "razorpay",
+        key_id: process.env.RAZORPAY_KEY_ID,
+        order_id: razorpayOrder.id,
+        amount: razorpayOrder.amount,
+        currency: razorpayOrder.currency,
+      },
+      message: "Checkout initiated. Waiting for payment verification.",
     });
   } catch (err) {
     next(err);
@@ -265,30 +240,18 @@ export const getOrders = async (req, res, next) => {
     const skip = (page - 1) * limit;
 
     const filter = req.user.role === "admin" ? {} : { user: req.user._id };
+
+    // Ghost orders logic removed since they are no longer created in the DB!
     if (req.query.order_status) {
       filter.order_status = req.query.order_status;
-    } else {
-      // An online order that's still waiting on payment confirmation isn't
-      // a real order yet — it's created up front purely so Razorpay
-      // Checkout has something to attach to, and it may never be paid
-      // (abandoned checkout, closed tab, failed card, or simply a page
-      // refresh while the widget is open). Hiding it from the default list
-      // — for BOTH the admin panel and the customer's own "My Orders" —
-      // means an incomplete checkout never reads as "my order was placed"
-      // to the customer, and never clutters the admin queue. COD orders
-      // are unaffected: they're created directly as order_status:"placed"
-      // and were never in payment_pending to begin with.
-      //
-      // Pass ?order_status=payment_pending explicitly to see these (e.g.
-      // a future "resume payment" screen, or admin support/troubleshooting)
-      // — the order is still fully retrievable by ID via GET /orders/:id
-      // for anyone who owns it, this only affects the default list view.
-      filter.order_status = { $ne: "payment_pending" };
     }
-    if (req.query.payment_status)
+
+    if (req.query.payment_status) {
       filter.payment_status = req.query.payment_status;
-    if (req.query.payment_method)
+    }
+    if (req.query.payment_method) {
       filter.payment_method = req.query.payment_method;
+    }
 
     const [items, total] = await Promise.all([
       Order.find(filter)
@@ -337,8 +300,7 @@ export const getOrderById = async (req, res, next) => {
 
 // @desc    Cancel an order (owner or admin). Self-serve cancellation is only
 //          offered for online-paid orders, and only within a 24-hour window
-//          of when the order was placed — after that (or for COD, or once
-//          an order has shipped) the customer needs to contact support.
+//          of when the order was placed.
 // @route   POST /api/orders/:id/cancel
 export const cancelOrder = async (req, res, next) => {
   try {
