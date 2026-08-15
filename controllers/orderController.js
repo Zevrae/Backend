@@ -168,7 +168,7 @@ export const createOrder = async (req, res, next) => {
     // conversion happens once, right when we call it below, and nowhere
     // else. Mixing units between here and there was the root cause of the
     // "order total is 100x too big" bug.
-    const shippingFee = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const shippingFee = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : 59;
     const handlingFee = method === "cod" ? COD_HANDLING_FEE : 0;
     const total = Math.max(0, subtotal - discountAmount + shippingFee + handlingFee);
 
