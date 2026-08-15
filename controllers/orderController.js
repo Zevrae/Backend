@@ -1,15 +1,17 @@
 import Order from "../models/Order.js";
 import Cart from "../models/Cart.js";
+import Product from "../models/Product.js";
 import Analysis from "../models/Analysis.js";
 import { getRazorpay, isRazorpayConfigured } from "../utils/razorpay.js";
 import { applyDiscountCode, DiscountError } from "../utils/discounts.js";
 import { sendEmail } from "../utils/sendEmail.js";
 
-// Flat shipping fee (in rupees) for orders under the free-shipping
+// Flat shipping fee (in rupees) for orders at/under the free-shipping
 // threshold. Matches the frontend's checkout summary exactly — keep these
-// in sync if either changes.
-const SHIPPING_FEE = 19;
-const FREE_SHIPPING_THRESHOLD = 1000;
+// in sync if either changes. Rule is strictly "subtotal > threshold", so a
+// subtotal exactly equal to the threshold still pays shipping.
+const SHIPPING_FEE = 59;
+const FREE_SHIPPING_THRESHOLD = 999;
 
 // Flat handling charge added to Cash on Delivery orders (in rupees). Covers
 // the extra cost of collecting payment at the doorstep. Keep in sync with
@@ -83,7 +85,56 @@ export const createOrder = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Cart is empty" });
     }
 
-    const subtotal = cart.items.reduce(
+    // The cart only stores a *snapshot* of each product's name/price taken
+    // at the moment it was added (see cartController.addItem) — it is never
+    // trustworthy as-is for what the customer is actually charged. Re-fetch
+    // every product fresh right now and rebuild the order's line items from
+    // that, so the price paid always matches the database's current price,
+    // and anything that went inactive/was deleted since it was added to the
+    // cart is caught before an order (or a Razorpay charge) is created for it.
+    const productIds = [...new Set(cart.items.map((item) => item.product.toString()))];
+    const products = await Product.find({ _id: { $in: productIds } });
+    const productById = new Map(products.map((p) => [p._id.toString(), p]));
+
+    const orderItems = [];
+    for (const item of cart.items) {
+      const product = productById.get(item.product.toString());
+      if (!product || product.status !== "active") {
+        return res.status(400).json({
+          success: false,
+          message: `"${item.name}" is no longer available. Please remove it from your bag and try again.`,
+        });
+      }
+      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid quantity for "${item.name}"`,
+        });
+      }
+
+      const availableStock =
+        product.inventory_mode === "size"
+          ? product.size_stock?.get(item.size) ?? 0
+          : product.stock_quantity;
+      if (availableStock < item.quantity) {
+        return res.status(400).json({
+          success: false,
+          message: `Only ${availableStock} of "${item.name}" left in stock.`,
+        });
+      }
+
+      orderItems.push({
+        product: product._id,
+        name: product.name,
+        // Authoritative, server-fetched price — the cart's copy is only
+        // ever used to know *which* products/quantities are in the cart.
+        price: product.price,
+        size: item.size,
+        quantity: item.quantity,
+      });
+    }
+
+    const subtotal = orderItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0,
     );
@@ -117,7 +168,7 @@ export const createOrder = async (req, res, next) => {
     // conversion happens once, right when we call it below, and nowhere
     // else. Mixing units between here and there was the root cause of the
     // "order total is 100x too big" bug.
-    const shippingFee = subtotal >= FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
+    const shippingFee = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
     const handlingFee = method === "cod" ? COD_HANDLING_FEE : 0;
     const total = Math.max(0, subtotal - discountAmount + shippingFee + handlingFee);
 
@@ -129,13 +180,7 @@ export const createOrder = async (req, res, next) => {
 
     const order = await Order.create({
       user: req.user._id,
-      items: cart.items.map((item) => ({
-        product: item.product,
-        name: item.name,
-        price: item.price,
-        size: item.size,
-        quantity: item.quantity,
-      })),
+      items: orderItems,
       shipping_address,
       subtotal,
       shipping_fee: shippingFee,
@@ -147,9 +192,18 @@ export const createOrder = async (req, res, next) => {
       order_status: initialOrderStatus,
     });
 
-    // Empty the cart once the order record exists (payment is handled separately)
-    cart.items = [];
-    await cart.save();
+    // Cash on Delivery orders are placed immediately — there's no payment
+    // left to wait on, so it's safe to empty the cart right now. Online
+    // orders are deliberately NOT cleared here: payment hasn't succeeded
+    // yet at this point, and clearing the cart before that would lose the
+    // customer's items if the payment fails, they abandon Razorpay
+    // Checkout, or their browser closes mid-payment. For online orders the
+    // cart is instead cleared the moment payment_status actually flips to
+    // 'paid' — see paymentController.verifyPayment / razorpayWebhook.
+    if (method === "cod") {
+      cart.items = [];
+      await cart.save();
+    }
 
     let razorpayOrder = null;
     if (method === "online" && isRazorpayConfigured()) {

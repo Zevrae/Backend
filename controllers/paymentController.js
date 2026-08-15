@@ -1,5 +1,12 @@
 import Order from '../models/Order.js';
+import Cart from '../models/Cart.js';
 import { verifyPaymentSignature, verifyWebhookSignature } from '../utils/razorpay.js';
+
+// Clears a user's cart. Called only at the moment an online order actually
+// becomes PAID (from verifyPayment or the webhook) — never at order
+// creation, and never on a failed/invalid payment. See createOrder in
+// orderController.js for why COD orders clear the cart immediately instead.
+const clearUserCart = (userId) => Cart.updateOne({ user: userId }, { $set: { items: [] } });
 
 // @desc    Verify a Razorpay Checkout payment and mark the order as paid
 // @route   POST /api/payments/verify
@@ -21,6 +28,14 @@ export const verifyPayment = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
+    // Idempotent short-circuit: the webhook (a duplicate frontend call, or
+    // a retry after a flaky network response) may have already confirmed
+    // this exact payment. Treat a repeat call as success without
+    // re-verifying or re-mutating anything.
+    if (order.payment_status === 'paid') {
+      return res.json({ success: true, message: 'Payment already verified', data: order });
+    }
+
     const isValid = verifyPaymentSignature({
       orderId: razorpay_order_id,
       paymentId: razorpay_payment_id,
@@ -28,24 +43,49 @@ export const verifyPayment = async (req, res, next) => {
     });
 
     if (!isValid) {
-      order.payment_status = 'failed';
-      await order.save();
+      // Filtered on payment_status still != 'paid' in case the webhook won
+      // a race and marked this PAID between our read above and this write
+      // — a later/invalid verification call must never demote a
+      // legitimately paid order back to failed.
+      await Order.updateOne(
+        { _id: order._id, payment_status: { $ne: 'paid' } },
+        { $set: { payment_status: 'failed' } },
+      );
       return res.status(400).json({ success: false, message: 'Payment signature verification failed' });
     }
 
-    order.payment_status = 'paid';
-    // Only a successful payment promotes the order out of payment_pending —
-    // this is the moment it actually becomes "placed". If it's already
-    // moved on (e.g. the webhook beat this call to it), leave order_status
-    // alone rather than stomping on further progress.
-    if (order.order_status === 'payment_pending') {
-      order.order_status = 'placed';
-    }
-    order.razorpay_payment_id = razorpay_payment_id;
-    order.razorpay_signature = razorpay_signature;
-    await order.save();
+    // Atomic, conditional transition: only ever moves a non-PAID order to
+    // PAID, and only one caller (this endpoint or the webhook, whichever
+    // gets here first) will see `updatedOrder` come back non-null. That's
+    // what makes concurrent verify + webhook calls for the same payment
+    // safe — exactly one of them performs the transition and clears the
+    // cart; the other no-ops below.
+    const updatedOrder = await Order.findOneAndUpdate(
+      { _id: order._id, payment_status: { $ne: 'paid' } },
+      {
+        $set: {
+          payment_status: 'paid',
+          razorpay_payment_id,
+          razorpay_signature,
+          // Only a successful payment promotes the order out of
+          // payment_pending — this is the moment it actually becomes
+          // "placed". If it's already moved on (e.g. the webhook beat this
+          // call to it and something else changed order_status further),
+          // leave order_status alone rather than stomping on progress.
+          ...(order.order_status === 'payment_pending' ? { order_status: 'placed' } : {}),
+        },
+      },
+      { new: true },
+    );
 
-    res.json({ success: true, message: 'Payment verified successfully', data: order });
+    if (updatedOrder) {
+      // Cart is cleared only on the actual transition into PAID — never on
+      // a failed attempt, and never twice for the same order.
+      await clearUserCart(order.user);
+    }
+
+    const finalOrder = updatedOrder || (await Order.findById(order._id));
+    res.json({ success: true, message: 'Payment verified successfully', data: finalOrder });
   } catch (err) {
     next(err);
   }
@@ -75,13 +115,38 @@ export const razorpayWebhook = async (req, res, next) => {
       const order = await Order.findOne({ razorpay_order_id: razorpayOrderId });
       if (order) {
         if (event === 'payment.captured') {
-          order.payment_status = 'paid';
-          order.order_status = order.order_status === 'payment_pending' ? 'placed' : order.order_status;
-          order.razorpay_payment_id = paymentEntity.id;
+          // Same atomic, conditional transition as verifyPayment — acts as
+          // the failsafe path for when the customer's browser closes or the
+          // network drops before the frontend's own /verify call fires.
+          // Guarding on payment_status != 'paid' makes repeated/duplicate
+          // webhook deliveries for the same event safe (Razorpay retries
+          // webhooks that don't get a 200 back), and means this can race
+          // safely against a concurrent /verify call for the same order.
+          const updatedOrder = await Order.findOneAndUpdate(
+            { _id: order._id, payment_status: { $ne: 'paid' } },
+            {
+              $set: {
+                payment_status: 'paid',
+                razorpay_payment_id: paymentEntity.id,
+                ...(order.order_status === 'payment_pending' ? { order_status: 'placed' } : {}),
+              },
+            },
+            { new: true },
+          );
+          if (updatedOrder) {
+            await clearUserCart(order.user);
+          }
         } else if (event === 'payment.failed') {
-          order.payment_status = 'failed';
+          // Out-of-order or duplicate delivery must never downgrade an
+          // order that's already been confirmed PAID — e.g. Razorpay
+          // redelivers a stale payment.failed for a payment that was
+          // subsequently retried and captured, or the events simply arrive
+          // out of order.
+          await Order.updateOne(
+            { _id: order._id, payment_status: { $ne: 'paid' } },
+            { $set: { payment_status: 'failed' } },
+          );
         }
-        await order.save();
       }
     }
 
