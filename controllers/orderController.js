@@ -10,13 +10,13 @@ import { sendEmail } from "../utils/sendEmail.js";
 // threshold. Matches the frontend's checkout summary exactly — keep these
 // in sync if either changes. Rule is strictly "subtotal > threshold", so a
 // subtotal exactly equal to the threshold still pays shipping.
-const SHIPPING_FEE = 59;
-const FREE_SHIPPING_THRESHOLD = 999;
+export const SHIPPING_FEE = 59;
+export const FREE_SHIPPING_THRESHOLD = 999;
 
 // Flat handling charge added to Cash on Delivery orders (in rupees). Covers
 // the extra cost of collecting payment at the doorstep. Keep in sync with
 // the frontend checkout summary if this ever changes.
-const COD_HANDLING_FEE = 15;
+export const COD_HANDLING_FEE = 15;
 
 // How long after placement a customer can still self-serve cancel an
 // online-paid order. Cash on Delivery orders aren't eligible for self-serve
@@ -32,7 +32,8 @@ const DEMAND_ALERT_THRESHOLD = Number(process.env.DEMAND_ALERT_THRESHOLD) || 50;
 // Best-effort: bump each ordered item's demand counter and, if a product has
 // just crossed the alert threshold, let the customer know their order might
 // be delayed. Never allowed to fail checkout — errors are swallowed.
-const recordDemandAndNotify = async (order, user) => {
+// EXPORTED so it can be called from the payment verification/webhook controllers.
+export const recordDemandAndNotify = async (order, user) => {
   try {
     const highDemandItems = [];
 
@@ -168,7 +169,7 @@ export const createOrder = async (req, res, next) => {
     // conversion happens once, right when we call it below, and nowhere
     // else. Mixing units between here and there was the root cause of the
     // "order total is 100x too big" bug.
-    const shippingFee = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : 59;
+    const shippingFee = subtotal > FREE_SHIPPING_THRESHOLD ? 0 : SHIPPING_FEE;
     const handlingFee = method === "cod" ? COD_HANDLING_FEE : 0;
     const total = Math.max(0, subtotal - discountAmount + shippingFee + handlingFee);
 
@@ -225,8 +226,12 @@ export const createOrder = async (req, res, next) => {
       await order.save();
     }
 
-    // Fire-and-forget — never blocks or fails the checkout response
-    recordDemandAndNotify(order, req.user);
+    // FIX: Only fire demand alerts and emails immediately for Cash on Delivery.
+    // Online orders will trigger this inside the /verify endpoint or webhook 
+    // ONLY after Razorpay confirms the payment is successful.
+    if (method === "cod") {
+      recordDemandAndNotify(order, req.user);
+    }
 
     res.status(201).json({
       success: true,
