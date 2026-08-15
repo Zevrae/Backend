@@ -8,7 +8,7 @@ import { sendEmail } from "../utils/sendEmail.js";
 
 // Flat shipping fee (in rupees) for orders at/under the free-shipping
 // threshold. Matches the frontend's checkout summary exactly.
-export const SHIPPING_FEE = 59;
+export const SHIPPING_FEE = 49;
 export const FREE_SHIPPING_THRESHOLD = 999;
 
 // Flat handling charge added to Cash on Delivery orders (in rupees).
