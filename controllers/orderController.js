@@ -262,15 +262,22 @@ export const getOrders = async (req, res, next) => {
     const filter = req.user.role === "admin" ? {} : { user: req.user._id };
     if (req.query.order_status) {
       filter.order_status = req.query.order_status;
-    } else if (req.user.role === "admin") {
+    } else {
       // An online order that's still waiting on payment confirmation isn't
-      // a real order yet from the business's point of view — it might be
-      // an abandoned or failed Razorpay checkout that never completes. The
-      // admin orders panel hides these by default so they don't clutter
-      // the list; pass ?order_status=payment_pending explicitly to see
-      // them (e.g. for support/troubleshooting). The customer's own order
-      // history is unaffected — they should still see "Awaiting payment"
-      // for their own in-progress checkout.
+      // a real order yet — it's created up front purely so Razorpay
+      // Checkout has something to attach to, and it may never be paid
+      // (abandoned checkout, closed tab, failed card, or simply a page
+      // refresh while the widget is open). Hiding it from the default list
+      // — for BOTH the admin panel and the customer's own "My Orders" —
+      // means an incomplete checkout never reads as "my order was placed"
+      // to the customer, and never clutters the admin queue. COD orders
+      // are unaffected: they're created directly as order_status:"placed"
+      // and were never in payment_pending to begin with.
+      //
+      // Pass ?order_status=payment_pending explicitly to see these (e.g.
+      // a future "resume payment" screen, or admin support/troubleshooting)
+      // — the order is still fully retrievable by ID via GET /orders/:id
+      // for anyone who owns it, this only affects the default list view.
       filter.order_status = { $ne: "payment_pending" };
     }
     if (req.query.payment_status)
