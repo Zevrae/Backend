@@ -26,37 +26,16 @@ import imageRoutes from "./routes/imageRoutes.js";
 
 const app = express();
 
-app.use("/api/", apiLimiter);
-// --- Middleware ---
-app.use(
-  helmet({
-    // Match the frontend's COOP setting. This API isn't the window that
-    // opens the Google sign-in popup, so it isn't the direct cause of the
-    // postMessage warning — but keeping both origins consistent avoids
-    // surprises if this server ever serves any HTML (e.g. /api-docs) that
-    // interacts with a popup.
-    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
-  }),
-);
+// ==========================================
+// 1. TRUST PROXY (Required for Rate Limiter)
+// ==========================================
+// Ensures the rate limiter uses the actual client IP, not the load balancer IP.
+app.set("trust proxy", 1);
 
-// ✅ Improved CORS config
+// ==========================================
+// 2. CORS (Must be the very first middleware)
+// ==========================================
 const allowedOrigins = ["https://www.zevrae.com", "https://zevrae.com"];
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (server-to-server, curl, mobile apps)
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  }),
-);
 
 // ✅ Explicit preflight handler
 app.options("*", (req, res) => {
@@ -69,10 +48,45 @@ app.options("*", (req, res) => {
     "Access-Control-Allow-Methods",
     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
   );
-  res.header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type,Authorization,x-razorpay-signature",
+  );
   res.sendStatus(200);
 });
 
+// ✅ Improved CORS config
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (server-to-server, curl, mobile apps)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-razorpay-signature"],
+  }),
+);
+
+// ==========================================
+// 3. SECURITY & RATE LIMITING
+// ==========================================
+app.use(
+  helmet({
+    // Match the frontend's COOP setting.
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  }),
+);
+
+app.use("/api/", apiLimiter);
+
+// ==========================================
+// 4. BODY PARSERS & LOGGING
+// ==========================================
 // Razorpay webhook raw body
 app.use(
   express.json({
@@ -87,12 +101,13 @@ if (process.env.NODE_ENV !== "test") {
   app.use(morgan("dev"));
 }
 
-// --- Health check ---
+// ==========================================
+// 5. UTILITY MIDDLEWARE & API DOCS
+// ==========================================
 app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.use(normalizeIds);
 
-// --- API docs ---
 app.use(
   "/api-docs",
   helmet({ contentSecurityPolicy: false }),
@@ -101,7 +116,9 @@ app.use(
 );
 app.get("/api-docs.json", (req, res) => res.json(swaggerSpec));
 
-// --- Routes ---
+// ==========================================
+// 6. ROUTES
+// ==========================================
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
@@ -116,6 +133,9 @@ app.use("/api/analysis", analysisRoutes);
 app.use("/api/tryon", tryonRoutes);
 app.use("/api/images", imageRoutes);
 
+// ==========================================
+// 7. ERROR HANDLERS (Must be at the very end)
+// ==========================================
 // --- Multer error handler (CORS-safe) ---
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
@@ -138,10 +158,12 @@ app.use((err, req, res, next) => {
   next(err);
 });
 
-// --- Error handling ---
 app.use(notFound);
 app.use(errorHandler);
 
+// ==========================================
+// 8. SERVER INITIALIZATION
+// ==========================================
 const PORT = process.env.PORT || 5000;
 
 const start = async () => {
