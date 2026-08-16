@@ -10,7 +10,7 @@ import {
   resetPassword,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/auth.js";
-import { loginLimiter, registerLimiter } from "../middleware/rateLimiter.js";
+//import { loginLimiter, registerLimiter } from "../middleware/rateLimiter.js";
 
 const router = express.Router();
 
@@ -52,7 +52,7 @@ const router = express.Router();
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/register", registerLimiter, register);
+router.post("/register", register);
 
 /**
  * @swagger
@@ -122,7 +122,7 @@ router.post("/resend-verification", resendVerification);
  *           A generic success message is always returned (whether or not the
  *           email is registered) to avoid leaking account existence.
  */
-router.post("/forgot-password", registerLimiter, forgotPassword);
+router.post("/forgot-password", forgotPassword);
 
 /**
  * @swagger
@@ -185,7 +185,7 @@ router.post("/reset-password", resetPassword);
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post("/login", loginLimiter, login);
+router.post("/login", login);
 
 /**
  * @swagger
@@ -229,7 +229,7 @@ router.post("/login", loginLimiter, login);
  *       503:
  *         description: Google sign-in is not configured on the server (missing GOOGLE_CLIENT_ID)
  */
-router.post("/google", loginLimiter, googleLogin);
+router.post("/google", googleLogin);
 
 /**
  * @swagger

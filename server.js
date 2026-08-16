@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
-import { apiLimiter } from "./middleware/rateLimiter.js";
+//import { apiLimiter } from "./middleware/rateLimiter.js";
 import helmet from "helmet";
 import morgan from "morgan";
 import swaggerUi from "swagger-ui-express";
@@ -28,9 +28,9 @@ const app = express();
 
 // Required behind Docker/EC2 load balancer so express-rate-limit
 // reads the real client IP from X-Forwarded-For correctly.
-app.set("trust proxy", 1);
+//app.set("trust proxy", 1);
 
-app.use("/api/", apiLimiter);
+//app.use("/api/", apiLimiter);
 // --- Middleware ---
 app.use(
   helmet({
