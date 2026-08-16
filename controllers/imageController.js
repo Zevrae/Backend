@@ -1,4 +1,6 @@
 import {
+  BUCKET_ID,
+  REVIEW_BUCKET_ID,
   extractFileIdFromUrl,
   extractBucketIdFromUrl,
   getFileBuffer,
@@ -16,7 +18,7 @@ import {
 
 const streamImage = async (fileId, bucketId, res, next) => {
   try {
-    const buffer = await getFileBuffer(fileId, bucketId);
+    const buffer = await getFileBuffer(bucketId, fileId);
     res.set("Content-Type", "application/octet-stream");
     res.set("Cache-Control", "public, max-age=86400");
     res.send(buffer);
