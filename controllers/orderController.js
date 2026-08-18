@@ -1,5 +1,5 @@
 import Order from "../models/Order.js";
-import Cart from "../models/Cart.js";
+import Cart, { MAX_QTY_PER_SIZE } from "../models/Cart.js";
 import Product from "../models/Product.js";
 import Analysis from "../models/Analysis.js";
 import { getRazorpay, isRazorpayConfigured } from "../utils/razorpay.js";
@@ -97,6 +97,12 @@ export const createOrder = async (req, res, next) => {
         return res.status(400).json({
           success: false,
           message: `Invalid quantity for "${item.name}"`,
+        });
+      }
+      if (item.quantity > MAX_QTY_PER_SIZE) {
+        return res.status(400).json({
+          success: false,
+          message: `You can only order up to ${MAX_QTY_PER_SIZE} of "${item.name}"${item.size ? ` in size ${item.size}` : ""}. Please update your bag.`,
         });
       }
 
