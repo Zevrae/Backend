@@ -29,6 +29,15 @@ const AnalysisSchema = new Schema(
       default: 0,
       min: 0,
     },
+    // Per-size breakdown of notify-me signups, e.g. { M: 3, L: 7 }. Lets the
+    // admin Analysis dashboard show which specific size is actually driving
+    // demand for a product, not just that the product overall has demand.
+    // Empty/unused for 'nosize' products (jewellery, accessories, etc.).
+    sizeDemand: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
   },
   {
     timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
