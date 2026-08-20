@@ -94,6 +94,13 @@ const OrderSchema = new Schema(
       default: 'payment_pending',
       index: true,
     },
+    // Estimated delivery date shown to the customer. Defaults to 7 days
+    // from the order date but can be overridden by an admin (see
+    // orderController.updateOrderStatus).
+    expected_delivery_date: {
+      type: Date,
+      default: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
     is_deleted: {
       type: Boolean,
       default: false,

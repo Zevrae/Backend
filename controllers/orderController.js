@@ -369,14 +369,29 @@ export const cancelOrder = async (req, res, next) => {
   }
 };
 
-// @desc    Update order/payment status (admin only)
+// @desc    Update order/payment status, and/or the expected delivery date
+//          (admin only)
 // @route   PATCH /api/orders/:id/status
 export const updateOrderStatus = async (req, res, next) => {
   try {
-    const { order_status, payment_status } = req.body;
+    const { order_status, payment_status, expected_delivery_date } = req.body;
     const updates = {};
     if (order_status) updates.order_status = order_status;
     if (payment_status) updates.payment_status = payment_status;
+    if (expected_delivery_date !== undefined) {
+      if (expected_delivery_date === null) {
+        updates.expected_delivery_date = null;
+      } else {
+        const parsed = new Date(expected_delivery_date);
+        if (Number.isNaN(parsed.getTime())) {
+          return res.status(400).json({
+            success: false,
+            message: "Invalid expected_delivery_date",
+          });
+        }
+        updates.expected_delivery_date = parsed;
+      }
+    }
 
     const order = await Order.findByIdAndUpdate(req.params.id, updates, {
       new: true,
