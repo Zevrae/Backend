@@ -33,7 +33,7 @@ export const MAX_TRYON_CLOTH_IMAGES = 5;
 
 export const uploadTryonImages = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 + MAX_TRYON_CLOTH_IMAGES },
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 + MAX_TRYON_CLOTH_IMAGES },
   fileFilter,
 }).fields([
   { name: "person_image", maxCount: 1 },
