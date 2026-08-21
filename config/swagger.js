@@ -192,6 +192,11 @@ const options = {
             },
             razorpay_order_id: { type: 'string' },
             razorpay_payment_id: { type: 'string' },
+            expected_delivery_date: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Defaults to 7 days after the order date; editable by an admin.',
+            },
           },
         },
         PaymentInfo: {

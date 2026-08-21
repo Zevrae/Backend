@@ -60,9 +60,16 @@ export const subscribeToStockNotification = async (req, res, next) => {
     }
 
     if (created) {
+      // Track demand for the specific size that was requested too, so the
+      // admin Analysis dashboard can show which size is actually driving
+      // the "notify me" signups on a product, not just the total count.
+      const incFields = { notifyCounter: 1 };
+      if (size) {
+        incFields[`sizeDemand.${size}`] = 1;
+      }
       await Analysis.findOneAndUpdate(
         { productId },
-        { $inc: { notifyCounter: 1 } },
+        { $inc: incFields },
         { new: true, upsert: true, setDefaultsOnInsert: true }
       );
     }

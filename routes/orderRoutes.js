@@ -122,7 +122,7 @@ router.post('/:id/cancel', cancelOrder);
  * @swagger
  * /orders/{id}/status:
  *   patch:
- *     summary: Update order/payment status (admin only)
+ *     summary: Update order/payment status and/or the expected delivery date (admin only)
  *     tags: [Orders]
  *     security:
  *       - bearerAuth: []
@@ -139,6 +139,7 @@ router.post('/:id/cancel', cancelOrder);
  *             properties:
  *               order_status: { type: string, enum: [payment_pending, placed, processing, shipped, delivered, cancelled] }
  *               payment_status: { type: string, enum: [pending, paid, failed, refunded] }
+ *               expected_delivery_date: { type: string, format: date-time, description: "Defaults to 7 days after the order date; admins can override it." }
  *     responses:
  *       200:
  *         description: Order updated

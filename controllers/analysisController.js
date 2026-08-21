@@ -1,6 +1,32 @@
 import Analysis from '../models/Analysis.js';
 import Product from '../models/Product.js';
 
+// Reusable aggregation stages that turn the `sizeDemand` map (e.g.
+// { M: 3, L: 7 }) into a single "which size is most in-demand" pair —
+// topDemandedSize (e.g. "L") and topDemandedSizeCount (e.g. 7). Used
+// anywhere we surface product-level demand so the admin dashboard can show
+// *which size* people actually want, not just an aggregate notify count.
+const topDemandedSizeStages = [
+  { $addFields: { sizeDemandArr: { $objectToArray: { $ifNull: ['$sizeDemand', {}] } } } },
+  {
+    $addFields: {
+      topSizeDemand: {
+        $reduce: {
+          input: '$sizeDemandArr',
+          initialValue: { k: null, v: 0 },
+          in: { $cond: [{ $gt: ['$$this.v', '$$value.v'] }, '$$this', '$$value'] },
+        },
+      },
+    },
+  },
+  {
+    $addFields: {
+      topDemandedSize: '$topSizeDemand.k',
+      topDemandedSizeCount: '$topSizeDemand.v',
+    },
+  },
+];
+
 // @desc    List demand-counter analytics for all products (admin only)
 // @route   GET /api/analysis
 export const getAnalysis = async (req, res, next) => {
@@ -16,6 +42,7 @@ export const getAnalysis = async (req, res, next) => {
     const [items, total] = await Promise.all([
       Analysis.aggregate([
         { $addFields: { combinedScore: { $add: ['$demandCounter', '$notifyCounter'] } } },
+        ...topDemandedSizeStages,
         { $sort: { [sortField.replace('-', '')]: sortField.startsWith('-') ? -1 : 1 } },
         { $skip: skip },
         { $limit: limit },
@@ -33,6 +60,9 @@ export const getAnalysis = async (req, res, next) => {
             demandCounter: 1,
             notifyCounter: 1,
             combinedScore: 1,
+            sizeDemand: 1,
+            topDemandedSize: 1,
+            topDemandedSizeCount: 1,
             created_at: 1,
             updated_at: 1,
             'product._id': 1,
@@ -87,6 +117,7 @@ export const getAnalysisSummary = async (req, res, next) => {
       // Top 10 products overall, by combined demand — "what's hottest right now"
       Analysis.aggregate([
         { $addFields: { combinedScore: { $add: ['$demandCounter', '$notifyCounter'] } } },
+        ...topDemandedSizeStages,
         { $sort: { combinedScore: -1 } },
         { $limit: 10 },
         { $lookup: { from: 'products', localField: 'productId', foreignField: '_id', as: 'product' } },
@@ -97,6 +128,9 @@ export const getAnalysisSummary = async (req, res, next) => {
             demandCounter: 1,
             notifyCounter: 1,
             combinedScore: 1,
+            sizeDemand: 1,
+            topDemandedSize: 1,
+            topDemandedSizeCount: 1,
             'product._id': 1,
             'product.name': 1,
             'product.category': 1,
@@ -111,6 +145,7 @@ export const getAnalysisSummary = async (req, res, next) => {
       // demand (notify signups) going completely unfulfilled right now.
       Analysis.aggregate([
         { $match: { notifyCounter: { $gt: 0 } } },
+        ...topDemandedSizeStages,
         { $lookup: { from: 'products', localField: 'productId', foreignField: '_id', as: 'product' } },
         { $unwind: '$product' },
         { $match: { 'product.is_deleted': { $ne: true }, 'product.stock_quantity': { $lte: 0 } } },
@@ -120,6 +155,9 @@ export const getAnalysisSummary = async (req, res, next) => {
           $project: {
             demandCounter: 1,
             notifyCounter: 1,
+            sizeDemand: 1,
+            topDemandedSize: 1,
+            topDemandedSizeCount: 1,
             'product._id': 1,
             'product.name': 1,
             'product.category': 1,

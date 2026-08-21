@@ -1,6 +1,12 @@
 import mongoose from "mongoose";
 const { Schema } = mongoose;
 
+// Maximum quantity a customer may order of a single size of a single
+// product in one order. Shared by the cart schema validation below and by
+// cartController / orderController, which is where this limit is actually
+// enforced (this schema-level max is a defense-in-depth backstop).
+export const MAX_QTY_PER_SIZE = 2;
+
 const CartItemSchema = new Schema(
   {
     product: {
@@ -15,6 +21,7 @@ const CartItemSchema = new Schema(
       type: Number,
       required: true,
       min: [1, "Quantity must be at least 1"],
+      max: [MAX_QTY_PER_SIZE, `Quantity cannot exceed ${MAX_QTY_PER_SIZE} per size`],
       default: 1,
     },
   },
