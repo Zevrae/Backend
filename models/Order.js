@@ -24,6 +24,12 @@ const ShippingAddressSchema = new Schema(
     state: { type: String },
     postal_code: { type: String, required: true },
     country: { type: String, required: true },
+    // Contact number entered at checkout for THIS order. Stored on the
+    // order itself (not just on the user's profile) because the profile
+    // phone can be missing — e.g. Google sign-in never collects one — or
+    // simply different from the number the customer wants used for this
+    // particular delivery.
+    phone: { type: String, required: true, trim: true },
   },
   { _id: false }
 );

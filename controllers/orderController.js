@@ -71,7 +71,21 @@ export const createOrder = async (req, res, next) => {
         .status(400)
         .json({ success: false, message: "Shipping address is required" });
     }
+    if (!shipping_address.phone || !shipping_address.phone.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Phone number is required" });
+    }
     const method = payment_method === "cod" ? "cod" : "online";
+
+    // Keep the account's profile phone in sync. This matters most for
+    // Google sign-in accounts, which never collect a phone at signup —
+    // without this, the number the customer just typed at checkout would
+    // only ever live on this one order instead of pre-filling next time.
+    if (!req.user.phone || !req.user.phone.trim()) {
+      req.user.phone = shipping_address.phone.trim();
+      await req.user.save({ validateBeforeSave: false });
+    }
 
     const cart = await Cart.findOne({ user: req.user._id });
     if (!cart || cart.items.length === 0) {
