@@ -141,6 +141,31 @@ const ProductSchema = new Schema(
       type: Date,
       default: null,
     },
+
+    // Set on products auto-created by the "Customize" flow (see
+    // customProductController.js). Regular admin-created products never
+    // set this. Kept as free-form metadata rather than a ref-only field so
+    // the exact design choices survive even if the source
+    // CustomizableGarment/color/print-area is later edited or removed.
+    is_customized: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+    customization: {
+      type: new Schema(
+        {
+          garment: { type: Schema.Types.ObjectId, ref: "CustomizableGarment" },
+          cloth_type: { type: String, trim: true },
+          cloth_label: { type: String, trim: true },
+          color_id: { type: String, trim: true },
+          color_label: { type: String, trim: true },
+          size: { type: String, trim: true },
+        },
+        { _id: false },
+      ),
+      default: undefined,
+    },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
