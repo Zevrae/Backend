@@ -23,6 +23,8 @@ import normalizeIds from "./middleware/normalizeIds.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
 import tryonRoutes from "./routes/tryonRoutes.js";
 import imageRoutes from "./routes/imageRoutes.js";
+import customizableGarmentRoutes from "./routes/customizableGarmentRoutes.js";
+import customProductRoutes from "./routes/customProductRoutes.js";
 
 const app = express();
 
@@ -119,6 +121,8 @@ app.use("/api/collections", collectionRoutes);
 app.use("/api/analysis", analysisRoutes);
 app.use("/api/tryon", tryonRoutes);
 app.use("/api/images", imageRoutes);
+app.use("/api/customizable-garments", customizableGarmentRoutes);
+app.use("/api/custom-products", customProductRoutes);
 
 // --- Multer error handler (CORS-safe) ---
 app.use((err, req, res, next) => {

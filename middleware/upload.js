@@ -28,6 +28,27 @@ export const uploadImages = multer({
   fileFilter,
 }).array("images", 5);
 
+// ✅ Customizable-garment color template photos (front/back, 15MB each)
+export const uploadGarmentColorImages = multer({
+  storage,
+  limits: { fileSize: MAX_PRODUCT_IMAGE_SIZE_MB * 1024 * 1024, files: 2 },
+  fileFilter,
+}).fields([
+  { name: "front", maxCount: 1 },
+  { name: "back", maxCount: 1 },
+]);
+
+// ✅ Generated design composites from the "Customize" editor (front/back,
+// 15MB each — these are full-stage PNG composites, not tiny thumbnails)
+export const uploadDesignImages = multer({
+  storage,
+  limits: { fileSize: MAX_PRODUCT_IMAGE_SIZE_MB * 1024 * 1024, files: 2 },
+  fileFilter,
+}).fields([
+  { name: "front", maxCount: 1 },
+  { name: "back", maxCount: 1 },
+]);
+
 // ✅ Try-on uploads (1 person image + up to 5 cloth images, 5MB each)
 export const MAX_TRYON_CLOTH_IMAGES = 5;
 
