@@ -3,6 +3,7 @@ import {
   proxyImage,
   getProductImage,
   getReviewImage,
+  getCustomImage,
 } from "../controllers/imageController.js";
 
 const router = express.Router();
@@ -40,6 +41,7 @@ const router = express.Router();
  */
 router.get("/product/:fileId", getProductImage);
 router.get("/review/:fileId", getReviewImage);
+router.get("/custom/:fileId", getCustomImage);
 router.get("/proxy", proxyImage);
 
 export default router;

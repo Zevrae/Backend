@@ -1,8 +1,10 @@
 import CustomizableGarment from "../models/CustomizableGarment.js";
 import Product from "../models/Product.js";
 import {
-  uploadFileToAppwrite,
-  isAppwriteConfigured,
+  uploadCustomFileToAppwrite,
+  deleteCustomFileFromAppwrite,
+  extractFileIdFromUrl,
+  isCustomBucketConfigured,
 } from "../utils/appwrite.js";
 
 // @desc    Turn a finished design (front/back composite PNGs) into a real,
@@ -13,10 +15,11 @@ import {
 //          optional), cloth_type, color_id, size, quantity
 export const generateCustomProduct = async (req, res, next) => {
   try {
-    if (!isAppwriteConfigured()) {
+    if (!isCustomBucketConfigured()) {
       return res.status(503).json({
         success: false,
-        message: "Image storage is not configured on the server (missing Appwrite env vars)",
+        message:
+          "Image storage is not configured on the server (missing Appwrite env vars, including APPWRITE_CUSTOM_BUCKET_ID)",
       });
     }
 
@@ -74,22 +77,36 @@ export const generateCustomProduct = async (req, res, next) => {
       });
     }
 
-    // Upload the generated composites. If this fails after stock was
-    // already claimed, refund it so the garment doesn't silently leak
-    // inventory.
+    // Upload the generated composites to the dedicated custom-products
+    // bucket (kept separate from the catalog product-images bucket so
+    // customer-generated designs have their own storage/lifecycle). If this
+    // fails after stock was already claimed, refund it so the garment
+    // doesn't silently leak inventory — and if the front upload succeeded
+    // but the back upload then failed, clean up the orphaned front file too
+    // instead of leaving it in the bucket with nothing referencing it.
     let frontUrl, backUrl;
     try {
-      frontUrl = await uploadFileToAppwrite(
+      frontUrl = await uploadCustomFileToAppwrite(
         req.files.front[0].buffer,
         `custom-${cloth_type}-${color_id}-${Date.now()}-front.png`,
       );
       if (req.files.back?.[0]) {
-        backUrl = await uploadFileToAppwrite(
+        backUrl = await uploadCustomFileToAppwrite(
           req.files.back[0].buffer,
           `custom-${cloth_type}-${color_id}-${Date.now()}-back.png`,
         );
       }
     } catch (uploadErr) {
+      if (frontUrl) {
+        const frontFileId = extractFileIdFromUrl(frontUrl);
+        if (frontFileId) {
+          try {
+            await deleteCustomFileFromAppwrite(frontFileId);
+          } catch (cleanupErr) {
+            console.error("Failed to clean up orphaned custom front image:", cleanupErr);
+          }
+        }
+      }
       await CustomizableGarment.updateOne(
         { _id: garment._id },
         { $inc: { [stockPath]: qty } },
