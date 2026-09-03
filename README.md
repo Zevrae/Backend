@@ -97,6 +97,16 @@ in a public product catalog without an Appwrite session. If these env vars
 are left blank, the upload endpoint returns `503` rather than crashing the
 app — everything else keeps working.
 
+The product **customizer** (`POST /api/custom-products`) stores the
+front/back composite PNGs it generates in a *separate* bucket, configured
+via `APPWRITE_CUSTOM_BUCKET_ID`. Create a second bucket in the same
+Appwrite project for this and give it the same `Permission.read(Role.any())`
+setup. Keeping it separate from `APPWRITE_BUCKET_ID` means customer-generated
+designs can have their own retention/lifecycle rules without touching
+catalog product images. If `APPWRITE_CUSTOM_BUCKET_ID` is left blank, the
+customizer's generate-product endpoint returns `503` rather than crashing
+the app.
+
 ## API documentation
 Once the server is running:
 - Interactive Swagger UI: `http://localhost:5000/api-docs`

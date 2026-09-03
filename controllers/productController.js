@@ -3,6 +3,7 @@ import {
   uploadFileToAppwrite,
   deleteFileFromAppwrite,
   extractFileIdFromUrl,
+  resolveBucketIdForUrl,
   isAppwriteConfigured,
 } from "../utils/appwrite.js";
 
@@ -247,7 +248,15 @@ export const deleteProductImage = async (req, res, next) => {
     const fileId = extractFileIdFromUrl(imageUrl);
     if (fileId && isAppwriteConfigured()) {
       try {
-        await deleteFileFromAppwrite(fileId);
+        // A product's images array can include customized-product images
+        // (which live in the separate custom bucket), not just regular
+        // catalog uploads — resolve the bucket from the URL itself rather
+        // than assuming the default product bucket, or deletion silently
+        // no-ops against the wrong bucket and leaves the file orphaned.
+        const bucketId = resolveBucketIdForUrl(imageUrl);
+        if (bucketId) {
+          await deleteFileFromAppwrite(fileId, bucketId);
+        }
       } catch (e) {
         console.error("Failed to delete image from Appwrite:", e);
       }

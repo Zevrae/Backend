@@ -1,6 +1,7 @@
 import {
   BUCKET_ID,
   REVIEW_BUCKET_ID,
+  CUSTOM_BUCKET_ID,
   extractFileIdFromUrl,
   extractBucketIdFromUrl,
   getFileBuffer,
@@ -34,6 +35,10 @@ export const getProductImage = (req, res, next) =>
 // @route   GET /api/images/review/:fileId
 export const getReviewImage = (req, res, next) =>
   streamImage(req.params.fileId, REVIEW_BUCKET_ID, res, next);
+
+// @route   GET /api/images/custom/:fileId
+export const getCustomImage = (req, res, next) =>
+  streamImage(req.params.fileId, CUSTOM_BUCKET_ID, res, next);
 
 export const proxyImage = async (req, res, next) => {
   try {

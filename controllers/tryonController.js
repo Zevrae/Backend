@@ -2,7 +2,7 @@ import axios from "axios";
 import FormData from "form-data";
 import Tryon from "../models/Tryon.js";
 import Product from "../models/Product.js";
-import { extractFileIdFromUrl, getFileBuffer, BUCKET_ID } from "../utils/appwrite.js";
+import { extractFileIdFromUrl, resolveBucketIdForUrl, getFileBuffer } from "../utils/appwrite.js";
 import { MAX_TRYON_CLOTH_IMAGES } from "../middleware/upload.js";
 
 // A garment photo for a try-on request can come from either:
@@ -29,7 +29,14 @@ async function resolveClothBuffers(clothFiles, clothImageUrls, product) {
     if (!fileId) {
       throw new Error("Could not resolve a cloth image URL to an Appwrite file");
     }
-    const buffer = await getFileBuffer(BUCKET_ID, fileId);
+    // product.images can include customized-product images living in the
+    // separate custom bucket (not just the regular product bucket), so the
+    // bucket has to be resolved from the URL itself.
+    const bucketId = resolveBucketIdForUrl(url);
+    if (!bucketId) {
+      throw new Error("Could not resolve a cloth image URL to a storage bucket");
+    }
+    const buffer = await getFileBuffer(bucketId, fileId);
     buffers.push({ buffer, filename: `${fileId}.jpg`, contentType: "image/jpeg" });
   }
 
