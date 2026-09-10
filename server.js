@@ -25,6 +25,8 @@ import tryonRoutes from "./routes/tryonRoutes.js";
 import imageRoutes from "./routes/imageRoutes.js";
 import customizableGarmentRoutes from "./routes/customizableGarmentRoutes.js";
 import customProductRoutes from "./routes/customProductRoutes.js";
+// with the other route imports, near the top
+import wishlistRoutes from "./routes/wishlistRoutes.js";
 
 const app = express();
 
@@ -46,7 +48,14 @@ app.use(
 );
 
 // ✅ Improved CORS config
-const allowedOrigins = ["https://www.zevrae.com", "https://zevrae.com" , "http://localhost:5000" , "http://localhost:5173" , "http://localhost:3000"];
+const allowedOrigins = [
+  "https://www.zevrae.com",
+  "https://zevrae.com",
+  "http://localhost:5000",
+  "http://localhost:5050",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
 
 app.use(
   cors({
@@ -123,6 +132,7 @@ app.use("/api/tryon", tryonRoutes);
 app.use("/api/images", imageRoutes);
 app.use("/api/customizable-garments", customizableGarmentRoutes);
 app.use("/api/custom-products", customProductRoutes);
+app.use("/api/wishlist", wishlistRoutes);
 
 // --- Multer error handler (CORS-safe) ---
 app.use((err, req, res, next) => {
