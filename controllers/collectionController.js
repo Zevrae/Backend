@@ -1,4 +1,5 @@
 import Collection from '../models/Collection.js';
+import { delPattern } from '../utils/cache.js';
 
 const slugify = (str) =>
   str
@@ -19,6 +20,7 @@ export const createCollection = async (req, res, next) => {
       status,
       featured,
     });
+    await delPattern('collections:');
     res.status(201).json({ success: true, data: collection });
   } catch (err) {
     next(err);
@@ -69,6 +71,7 @@ export const updateCollection = async (req, res, next) => {
     if (!collection) {
       return res.status(404).json({ success: false, message: 'Collection not found' });
     }
+    await delPattern('collections:');
     res.json({ success: true, data: collection });
   } catch (err) {
     next(err);
@@ -84,6 +87,7 @@ export const deleteCollection = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Collection not found' });
     }
     await collection.softDelete();
+    await delPattern('collections:');
     res.json({ success: true, message: 'Collection soft-deleted' });
   } catch (err) {
     next(err);

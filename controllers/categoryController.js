@@ -1,4 +1,5 @@
 import Category from '../models/Category.js';
+import { delPattern } from '../utils/cache.js';
 
 const slugify = (str) =>
   str
@@ -19,6 +20,7 @@ export const createCategory = async (req, res, next) => {
       parent: parent || null,
       status,
     });
+    await delPattern('categories:');
     res.status(201).json({ success: true, data: category });
   } catch (err) {
     next(err);
@@ -65,6 +67,7 @@ export const updateCategory = async (req, res, next) => {
       { new: true, runValidators: true }
     );
     if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
+    await delPattern('categories:');
     res.json({ success: true, data: category });
   } catch (err) {
     next(err);
@@ -78,6 +81,7 @@ export const deleteCategory = async (req, res, next) => {
     const category = await Category.findOne({ _id: req.params.id, is_deleted: { $ne: true } });
     if (!category) return res.status(404).json({ success: false, message: 'Category not found' });
     await category.softDelete();
+    await delPattern('categories:');
     res.json({ success: true, message: 'Category soft-deleted' });
   } catch (err) {
     next(err);

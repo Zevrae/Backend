@@ -1,12 +1,13 @@
-import express from 'express';
+import express from "express";
 import {
   createCategory,
   getCategories,
   getCategoryById,
   updateCategory,
   deleteCategory,
-} from '../controllers/categoryController.js';
-import { protect, authorize } from '../middleware/auth.js';
+} from "../controllers/categoryController.js";
+import { protect, authorize } from "../middleware/auth.js";
+import { cacheRoute } from "../middleware/cacheMiddleware.js";
 
 const router = express.Router();
 
@@ -58,7 +59,10 @@ const router = express.Router();
  *       201:
  *         description: Category created
  */
-router.route('/').get(getCategories).post(protect, authorize('admin'), createCategory);
+router
+  .route("/")
+  .get(cacheRoute("categories", 120), getCategories)
+  .post(protect, authorize("admin"), createCategory);
 
 /**
  * @swagger
@@ -109,9 +113,9 @@ router.route('/').get(getCategories).post(protect, authorize('admin'), createCat
  *         description: Category soft-deleted
  */
 router
-  .route('/:id')
-  .get(getCategoryById)
-  .put(protect, authorize('admin'), updateCategory)
-  .delete(protect, authorize('admin'), deleteCategory);
+  .route("/:id")
+  .get(cacheRoute("categories", 300), getCategoryById)
+  .put(protect, authorize("admin"), updateCategory)
+  .delete(protect, authorize("admin"), deleteCategory);
 
 export default router;

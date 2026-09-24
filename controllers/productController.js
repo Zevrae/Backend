@@ -6,6 +6,7 @@ import {
   resolveBucketIdForUrl,
   isAppwriteConfigured,
 } from "../utils/appwrite.js";
+import { delPattern } from "../utils/cache.js";
 
 // Validation helper
 function validateInventory(reqBody) {
@@ -36,6 +37,7 @@ export const createProduct = async (req, res, next) => {
     if (error) return res.status(400).json({ success: false, message: error });
 
     const product = await Product.create(req.body);
+    await delPattern("products:");
     res.status(201).json({ success: true, data: product });
   } catch (err) {
     next(err);
@@ -116,6 +118,7 @@ export const updateProduct = async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Product not found" });
     }
+    await delPattern("products:");
     res.json({ success: true, data: product });
   } catch (err) {
     next(err);
@@ -136,6 +139,7 @@ export const deleteProduct = async (req, res, next) => {
         .json({ success: false, message: "Product not found" });
     }
     await product.softDelete();
+    await delPattern("products:");
     res.json({ success: true, message: "Product soft-deleted", data: product });
   } catch (err) {
     next(err);
@@ -155,6 +159,7 @@ export const restoreProduct = async (req, res, next) => {
         .json({ success: false, message: "Deleted product not found" });
     }
     await product.restore();
+    await delPattern("products:");
     res.json({ success: true, message: "Product restored", data: product });
   } catch (err) {
     next(err);
@@ -184,12 +189,10 @@ export const uploadProductImages = async (req, res, next) => {
     }
 
     if (!req.files || req.files.length === 0) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: 'No image files provided (use the "images" field)',
-        });
+      return res.status(400).json({
+        success: false,
+        message: 'No image files provided (use the "images" field)',
+      });
     }
 
     const uploadedUrls = [];
@@ -211,6 +214,7 @@ export const uploadProductImages = async (req, res, next) => {
       { new: true },
     );
 
+    await delPattern("products:");
     res.status(201).json({ success: true, data: updated });
   } catch (err) {
     next(err);
@@ -271,6 +275,7 @@ export const deleteProductImage = async (req, res, next) => {
       { new: true },
     );
 
+    await delPattern("products:");
     res.json({ success: true, data: updated });
   } catch (err) {
     next(err);

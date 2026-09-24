@@ -1,12 +1,13 @@
-import express from 'express';
+import express from "express";
 import {
   createCollection,
   getCollections,
   getCollectionBySlug,
   updateCollection,
   deleteCollection,
-} from '../controllers/collectionController.js';
-import { protect, authorize } from '../middleware/auth.js';
+} from "../controllers/collectionController.js";
+import { protect, authorize } from "../middleware/auth.js";
+import { cacheRoute } from "../middleware/cacheMiddleware.js";
 
 const router = express.Router();
 
@@ -57,7 +58,10 @@ const router = express.Router();
  *       201:
  *         description: Collection created
  */
-router.route('/').get(getCollections).post(protect, authorize('admin'), createCollection);
+router
+  .route("/")
+  .get(cacheRoute("collections", 120), getCollections)
+  .post(protect, authorize("admin"), createCollection);
 
 /**
  * @swagger
@@ -76,7 +80,7 @@ router.route('/').get(getCollections).post(protect, authorize('admin'), createCo
  *       404:
  *         description: Collection not found
  */
-router.get('/:slug', getCollectionBySlug);
+router.get("/:slug", cacheRoute("collections", 300), getCollectionBySlug);
 
 /**
  * @swagger
@@ -117,6 +121,9 @@ router.get('/:slug', getCollectionBySlug);
  *       404:
  *         description: Collection not found
  */
-router.route('/:id').put(protect, authorize('admin'), updateCollection).delete(protect, authorize('admin'), deleteCollection);
+router
+  .route("/:id")
+  .put(protect, authorize("admin"), updateCollection)
+  .delete(protect, authorize("admin"), deleteCollection);
 
 export default router;

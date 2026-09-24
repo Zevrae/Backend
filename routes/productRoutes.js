@@ -1,4 +1,4 @@
-import express from 'express';
+import express from "express";
 import {
   createProduct,
   getProducts,
@@ -8,11 +8,15 @@ import {
   restoreProduct,
   uploadProductImages,
   deleteProductImage,
-} from '../controllers/productController.js';
-import reviewRoutes from './reviewRoutes.js';
-import { protect, authorize, optionalAuth } from '../middleware/auth.js';
-import { uploadImages } from '../middleware/upload.js';
-import { subscribeToStockNotification, getStockNotifications } from '../controllers/stockNotificationController.js';
+} from "../controllers/productController.js";
+import reviewRoutes from "./reviewRoutes.js";
+import { protect, authorize, optionalAuth } from "../middleware/auth.js";
+import { uploadImages } from "../middleware/upload.js";
+import {
+  subscribeToStockNotification,
+  getStockNotifications,
+} from "../controllers/stockNotificationController.js";
+import { cacheRoute } from "../middleware/cacheMiddleware.js";
 
 const router = express.Router();
 
@@ -84,7 +88,10 @@ const router = express.Router();
  *       201:
  *         description: Product created
  */
-router.route('/').get(getProducts).post(protect, authorize('admin'), createProduct);
+router
+  .route("/")
+  .get(cacheRoute("products", 120), getProducts)
+  .post(protect, authorize("admin"), createProduct);
 
 /**
  * @swagger
@@ -135,10 +142,10 @@ router.route('/').get(getProducts).post(protect, authorize('admin'), createProdu
  *         description: Product soft-deleted
  */
 router
-  .route('/:id')
-  .get(getProductById)
-  .put(protect, authorize('admin'), updateProduct)
-  .delete(protect, authorize('admin'), deleteProduct);
+  .route("/:id")
+  .get(cacheRoute("products", 300), getProductById)
+  .put(protect, authorize("admin"), updateProduct)
+  .delete(protect, authorize("admin"), deleteProduct);
 
 /**
  * @swagger
@@ -159,7 +166,7 @@ router
  *       404:
  *         description: Deleted product not found
  */
-router.patch('/:id/restore', protect, authorize('admin'), restoreProduct);
+router.patch("/:id/restore", protect, authorize("admin"), restoreProduct);
 
 /**
  * @swagger
@@ -222,9 +229,9 @@ router.patch('/:id/restore', protect, authorize('admin'), restoreProduct);
  *         description: Product or image not found
  */
 router
-  .route('/:id/images')
-  .post(protect, authorize('admin'), uploadImages, uploadProductImages)
-  .delete(protect, authorize('admin'), deleteProductImage);
+  .route("/:id/images")
+  .post(protect, authorize("admin"), uploadImages, uploadProductImages)
+  .delete(protect, authorize("admin"), deleteProductImage);
 
 // Nested: /api/products/:productId/reviews
 /**
@@ -274,10 +281,11 @@ router
  *       200:
  *         description: List of not-yet-notified signups
  */
-router.route('/:id/notify')
+router
+  .route("/:id/notify")
   .post(optionalAuth, subscribeToStockNotification)
-  .get(protect, authorize('admin'), getStockNotifications);
+  .get(protect, authorize("admin"), getStockNotifications);
 
-router.use('/:productId/reviews', reviewRoutes);
+router.use("/:productId/reviews", reviewRoutes);
 
 export default router;

@@ -1,4 +1,4 @@
-import express from 'express';
+import express from "express";
 import {
   createDiscount,
   getDiscounts,
@@ -6,8 +6,9 @@ import {
   updateDiscount,
   deleteDiscount,
   useDiscount,
-} from '../controllers/discountController.js';
-import { protect, authorize } from '../middleware/auth.js';
+} from "../controllers/discountController.js";
+import { protect, authorize } from "../middleware/auth.js";
+import { cacheRoute } from "../middleware/cacheMiddleware.js";
 
 const router = express.Router();
 
@@ -44,7 +45,10 @@ const router = express.Router();
  *       201:
  *         description: Discount created
  */
-router.route('/').get(protect, authorize('admin'), getDiscounts).post(protect, authorize('admin'), createDiscount);
+router
+  .route("/")
+  .get(protect, authorize("admin"), getDiscounts)
+  .post(protect, authorize("admin"), createDiscount);
 
 /**
  * @swagger
@@ -73,7 +77,7 @@ router.route('/').get(protect, authorize('admin'), getDiscounts).post(protect, a
  *       404:
  *         description: Discount not found
  */
-router.post('/use', protect, useDiscount);
+router.post("/use", protect, useDiscount);
 
 /**
  * @swagger
@@ -92,7 +96,7 @@ router.post('/use', protect, useDiscount);
  *       404:
  *         description: Discount not found
  */
-router.get('/:code', getDiscountByCode);
+router.get("/:code", cacheRoute("discounts", 30), getDiscountByCode);
 
 /**
  * @swagger
@@ -129,6 +133,9 @@ router.get('/:code', getDiscountByCode);
  *       200:
  *         description: Discount soft-deleted
  */
-router.route('/:id').put(protect, authorize('admin'), updateDiscount).delete(protect, authorize('admin'), deleteDiscount);
+router
+  .route("/:id")
+  .put(protect, authorize("admin"), updateDiscount)
+  .delete(protect, authorize("admin"), deleteDiscount);
 
 export default router;
