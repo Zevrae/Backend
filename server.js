@@ -16,6 +16,7 @@ import userRoutes from "./routes/userRoutes.js";
 import categoryRoutes from "./routes/categoryRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
+import exchangeRoutes from "./routes/exchangeRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
 import { standaloneRouter as reviewStandaloneRoutes } from "./routes/reviewRoutes.js";
 import { notFound, errorHandler } from "./middleware/errorHandler.js";
@@ -25,7 +26,6 @@ import tryonRoutes from "./routes/tryonRoutes.js";
 import imageRoutes from "./routes/imageRoutes.js";
 import customizableGarmentRoutes from "./routes/customizableGarmentRoutes.js";
 import customProductRoutes from "./routes/customProductRoutes.js";
-// with the other route imports, near the top
 import wishlistRoutes from "./routes/wishlistRoutes.js";
 
 const app = express();
@@ -123,6 +123,7 @@ app.use("/api/products", productRoutes);
 app.use("/api/categories", categoryRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/exchanges", exchangeRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/reviews", reviewStandaloneRoutes);
 app.use("/api/discounts", discountRoutes);

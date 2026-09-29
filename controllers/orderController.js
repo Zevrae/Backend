@@ -391,6 +391,9 @@ export const updateOrderStatus = async (req, res, next) => {
     const { order_status, payment_status, expected_delivery_date } = req.body;
     const updates = {};
     if (order_status) updates.order_status = order_status;
+    if (order_status === "delivered") {
+      updates.delivered_at = new Date();
+    }
     if (payment_status) updates.payment_status = payment_status;
     if (expected_delivery_date !== undefined) {
       if (expected_delivery_date === null) {
