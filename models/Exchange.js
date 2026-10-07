@@ -14,6 +14,9 @@ export const EXCHANGE_STATUSES = [
 
 export const CLOSED_EXCHANGE_STATUSES = ["completed", "rejected", "cancelled"];
 
+// Snapshot of an item at the time of the request — same idea as
+// OrderItemSchema / CartItemSchema, so later product edits don't rewrite
+// history.
 const ExchangeItemSchema = new Schema(
   {
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
@@ -57,15 +60,23 @@ const ExchangeSchema = new Schema(
       default: "requested",
       index: true,
     },
-
+    // true while the exchange is still in flight. Kept as a real field (not
+    // derived) so the partial unique index below can use it.
     is_open: { type: Boolean, default: true, index: true },
     admin_note: { type: String, trim: true, maxlength: 500 },
 
+    // --- Pricing (whole rupees) ---
+    // Flat charge for exchanging to a DIFFERENT product — 0 for a same-
+    // product size swap.
     exchange_fee: { type: Number, required: true, min: 0 },
-
+    // Extra the customer owes if the new item costs more than the original
+    // (0 if it costs the same or less — no refund is issued for the gap).
+    // Only ever non-zero alongside exchange_fee (different product).
     price_difference: { type: Number, default: 0, min: 0 },
     amount_due: { type: Number, required: true, min: 0 },
-
+    // Collected offline (cash/UPI at pickup), like COD — no payment
+    // gateway involved. Admin flips this once the amount is actually in
+    // hand, same moment the original item is picked up.
     amount_collected: { type: Boolean, default: false },
 
     // --- Stock bookkeeping ---
@@ -83,6 +94,7 @@ ExchangeSchema.pre("validate", function (next) {
   next();
 });
 
+// At most one in-flight exchange per order line (product + size).
 ExchangeSchema.index(
   {
     order: 1,

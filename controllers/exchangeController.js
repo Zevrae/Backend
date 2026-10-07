@@ -3,9 +3,12 @@ import Exchange, { CLOSED_EXCHANGE_STATUSES } from "../models/Exchange.js";
 import Order from "../models/Order.js";
 import Product from "../models/Product.js";
 
-export const EXCHANGE_SHIPPING_FEE =
-  Number(process.env.EXCHANGE_SHIPPING_FEE) || 99;
+// Flat charge (in rupees) for exchanging to a DIFFERENT product. A same-
+// product size swap is always free.
+export const EXCHANGE_FEE = Number(process.env.EXCHANGE_FEE) || 99;
 
+// How long after DELIVERY a customer can request an exchange (needs
+// Order.delivered_at; falls back to updated_at for older orders).
 const EXCHANGE_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 const availableStockFor = (product, size) =>
@@ -69,6 +72,14 @@ export const createExchangeRequest = async (req, res, next) => {
       });
     }
 
+    const isSizeSwap = product === new_product;
+    if (isSizeSwap && (new_size || "") === (size || "")) {
+      return res.status(400).json({
+        success: false,
+        message: "Pick a different size to exchange for",
+      });
+    }
+
     const existingOpen = await Exchange.findOne({
       order: order._id,
       "original_item.product": product,
@@ -95,7 +106,9 @@ export const createExchangeRequest = async (req, res, next) => {
       });
     }
 
-    const newProduct = await Product.findById(new_product);
+    const newProduct = isSizeSwap
+      ? originalProduct
+      : await Product.findById(new_product);
     if (!newProduct || newProduct.status !== "active") {
       return res.status(404).json({
         success: false,
@@ -122,17 +135,13 @@ export const createExchangeRequest = async (req, res, next) => {
       });
     }
 
-    const isSizeSwap = product === new_product.toString();
-
-    let exchangeFee = 0;
-    let priceDifference = 0;
-    let amountDue = 0;
-
-    if (!isSizeSwap) {
-      exchangeFee = EXCHANGE_SHIPPING_FEE;
-      priceDifference = Math.max(0, (newProduct.price - orderItem.price) * qty);
-      amountDue = exchangeFee + priceDifference;
-    }
+    // Same product, different size => free. Different product => flat fee,
+    // plus the price gap if the new item costs more.
+    const exchangeFee = isSizeSwap ? 0 : EXCHANGE_FEE;
+    const priceDifference = isSizeSwap
+      ? 0
+      : Math.max(0, (newProduct.price - orderItem.price) * qty);
+    const amountDue = exchangeFee + priceDifference;
 
     const exchange = await Exchange.create({
       order: order._id,
@@ -156,20 +165,24 @@ export const createExchangeRequest = async (req, res, next) => {
       exchange_fee: exchangeFee,
       price_difference: priceDifference,
       amount_due: amountDue,
+      amount_collected: amountDue === 0,
     });
 
     res.status(201).json({
       success: true,
       data: exchange,
-      message: isSizeSwap
-        ? "Size exchange requested — no charges apply."
-        : `Exchange requested — ₹${amountDue} will be collected at delivery.`,
+      message:
+        amountDue > 0
+          ? `Exchange requested. ₹${amountDue} will be collected at pickup.`
+          : "Exchange requested — no charge for a size swap.",
     });
   } catch (err) {
     next(err);
   }
 };
 
+// @desc    List exchanges (own, or all if admin)
+// @route   GET /api/exchanges
 export const getExchanges = async (req, res, next) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
@@ -212,11 +225,9 @@ export const getExchangeById = async (req, res, next) => {
         .status(404)
         .json({ success: false, message: "Exchange not found" });
     }
-    // After .populate("user"), exchange.user is an object — extract _id.
-    const exchangeUserId = exchange.user?._id ?? exchange.user;
     if (
       req.user.role !== "admin" &&
-      exchangeUserId.toString() !== req.user._id.toString()
+      exchange.user._id.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({ success: false, message: "Forbidden" });
     }
@@ -226,7 +237,7 @@ export const getExchangeById = async (req, res, next) => {
   }
 };
 
-// @desc    Cancel an exchange request (owner, while still 'requested')
+// @desc    Cancel an exchange request (owner, while still 'requested'; admin anytime)
 // @route   POST /api/exchanges/:id/cancel
 export const cancelExchangeRequest = async (req, res, next) => {
   try {
@@ -239,6 +250,12 @@ export const cancelExchangeRequest = async (req, res, next) => {
     const isOwner = exchange.user.toString() === req.user._id.toString();
     if (req.user.role !== "admin" && !isOwner) {
       return res.status(403).json({ success: false, message: "Forbidden" });
+    }
+    if (CLOSED_EXCHANGE_STATUSES.includes(exchange.status)) {
+      return res.status(400).json({
+        success: false,
+        message: `This exchange is already ${exchange.status}`,
+      });
     }
     if (req.user.role !== "admin" && exchange.status !== "requested") {
       return res.status(400).json({
@@ -257,168 +274,146 @@ export const cancelExchangeRequest = async (req, res, next) => {
   }
 };
 
-// Core status-update logic, extracted so it can run with or without a
-// Mongo session (standalone dev instances don't support transactions).
-async function applyStatusUpdate(
-  exchangeId,
-  { status, admin_note, amount_collected },
-  session,
-) {
-  const opts = session ? { session } : {};
-  const exchange = session
-    ? await Exchange.findById(exchangeId).session(session)
-    : await Exchange.findById(exchangeId);
-
-  if (!exchange) {
-    throw Object.assign(new Error("Exchange not found"), { statusCode: 404 });
-  }
-  if (CLOSED_EXCHANGE_STATUSES.includes(exchange.status)) {
-    throw Object.assign(
-      new Error(
-        `This exchange is already ${exchange.status} and can't be updated further`,
-      ),
-      { statusCode: 400 },
-    );
-  }
-
-  // Reserve the replacement item's stock the moment an exchange is
-  // approved, mirroring how checkout reserves stock at order creation.
-  if (status === "approved" && !exchange.stock_reserved) {
-    const newProduct = session
-      ? await Product.findById(exchange.new_item.product).session(session)
-      : await Product.findById(exchange.new_item.product);
-    if (!newProduct) {
-      throw Object.assign(new Error("Replacement product no longer exists"), {
-        statusCode: 404,
-      });
-    }
-    const qty = exchange.new_item.quantity;
-
-    if (newProduct.inventory_mode === "size") {
-      const current = newProduct.size_stock.get(exchange.new_item.size) ?? 0;
-      if (current < qty) {
-        throw Object.assign(new Error("Replacement item is out of stock"), {
-          statusCode: 409,
-        });
-      }
-      newProduct.size_stock.set(exchange.new_item.size, current - qty);
-    } else {
-      if (newProduct.stock_quantity < qty) {
-        throw Object.assign(new Error("Replacement item is out of stock"), {
-          statusCode: 409,
-        });
-      }
-      newProduct.stock_quantity -= qty;
-    }
-    await newProduct.save(opts);
-    exchange.stock_reserved = true;
-  }
-
-  // When the original item is picked up, the delivery agent also
-  // collects any due amount (shipping charge + price difference) —
-  // admin marks amount_collected = true at the same time.
-  if (status === "picked_up" && exchange.amount_due > 0) {
-    if (amount_collected !== undefined) {
-      exchange.amount_collected = Boolean(amount_collected);
-    }
-  }
-
-  // Put the returned item back into sellable stock once it's actually
-  // back in the warehouse.
-  if (status === "received" && !exchange.original_restocked) {
-    const originalProduct = session
-      ? await Product.findById(exchange.original_item.product).session(session)
-      : await Product.findById(exchange.original_item.product);
-    if (originalProduct) {
-      const qty = exchange.original_item.quantity;
-      if (originalProduct.inventory_mode === "size") {
-        const current =
-          originalProduct.size_stock.get(exchange.original_item.size) ?? 0;
-        originalProduct.size_stock.set(
-          exchange.original_item.size,
-          current + qty,
-        );
-      } else {
-        originalProduct.stock_quantity += qty;
-      }
-      await originalProduct.save(opts);
-    }
-    exchange.original_restocked = true;
-  }
-
-  // Release reserved stock if the exchange is rejected/cancelled after
-  // approval (stock was already decremented).
-  if (
-    ["rejected", "cancelled"].includes(status) &&
-    exchange.stock_reserved &&
-    exchange.status !== "cancelled"
-  ) {
-    const newProduct = session
-      ? await Product.findById(exchange.new_item.product).session(session)
-      : await Product.findById(exchange.new_item.product);
-    if (newProduct) {
-      const qty = exchange.new_item.quantity;
-      if (newProduct.inventory_mode === "size") {
-        const current = newProduct.size_stock.get(exchange.new_item.size) ?? 0;
-        newProduct.size_stock.set(exchange.new_item.size, current + qty);
-      } else {
-        newProduct.stock_quantity += qty;
-      }
-      await newProduct.save(opts);
-    }
-  }
-
-  exchange.status = status;
-  if (admin_note !== undefined) exchange.admin_note = admin_note;
-  // Allow admin to mark amount_collected on any status update
-  if (amount_collected !== undefined) {
-    exchange.amount_collected = Boolean(amount_collected);
-  }
-  await exchange.save(opts);
-  return exchange;
-}
-
 // @desc    Move an exchange through its lifecycle (admin only)
 // @route   PATCH /api/exchanges/:id/status
 export const updateExchangeStatus = async (req, res, next) => {
+  const session = await mongoose.startSession();
   try {
     const { status, admin_note, amount_collected } = req.body;
-    if (!status) {
-      return res
-        .status(400)
-        .json({ success: false, message: "status is required" });
+    if (!status && amount_collected === undefined && admin_note === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: "Provide status, amount_collected, and/or admin_note",
+      });
     }
 
-    const payload = { status, admin_note, amount_collected };
     let result;
-
-    // Try to run inside a transaction (requires a replica set). If the
-    // server is a standalone instance (common in local dev), fall back to
-    // non-transactional writes — still correct for single-server setups.
-    try {
-      const session = await mongoose.startSession();
-      try {
-        await session.withTransaction(async () => {
-          result = await applyStatusUpdate(req.params.id, payload, session);
+    await session.withTransaction(async () => {
+      const exchange = await Exchange.findById(req.params.id).session(session);
+      if (!exchange) {
+        throw Object.assign(new Error("Exchange not found"), {
+          statusCode: 404,
         });
-      } finally {
-        session.endSession();
       }
-    } catch (txnErr) {
-      // MongoServerError 20 / 263 = "Transaction numbers are only allowed
-      // on a replica set member or mongos" — safe to retry without a
-      // session on a standalone instance.
-      if (
-        txnErr.codeName === "IllegalOperation" ||
-        txnErr.code === 20 ||
-        txnErr.code === 263 ||
-        /transaction/i.test(txnErr.message)
-      ) {
-        result = await applyStatusUpdate(req.params.id, payload, null);
-      } else {
-        throw txnErr;
+      if (CLOSED_EXCHANGE_STATUSES.includes(exchange.status)) {
+        throw Object.assign(
+          new Error(
+            `This exchange is already ${exchange.status} and can't be updated further`,
+          ),
+          { statusCode: 400 },
+        );
       }
-    }
+
+      if (typeof amount_collected === "boolean") {
+        exchange.amount_collected = amount_collected;
+      }
+      if (admin_note !== undefined) exchange.admin_note = admin_note;
+
+      if (status) {
+        // Reserve the replacement item's stock the moment an exchange is
+        // approved, mirroring how checkout reserves stock at order creation.
+        if (status === "approved" && !exchange.stock_reserved) {
+          const newProduct = await Product.findById(
+            exchange.new_item.product,
+          ).session(session);
+          if (!newProduct) {
+            throw Object.assign(
+              new Error("Replacement product no longer exists"),
+              { statusCode: 404 },
+            );
+          }
+          const qty = exchange.new_item.quantity;
+
+          if (newProduct.inventory_mode === "size") {
+            const current =
+              newProduct.size_stock.get(exchange.new_item.size) ?? 0;
+            if (current < qty) {
+              throw Object.assign(
+                new Error("Replacement item is out of stock"),
+                { statusCode: 409 },
+              );
+            }
+            newProduct.size_stock.set(exchange.new_item.size, current - qty);
+          } else {
+            if (newProduct.stock_quantity < qty) {
+              throw Object.assign(
+                new Error("Replacement item is out of stock"),
+                { statusCode: 409 },
+              );
+            }
+            newProduct.stock_quantity -= qty;
+          }
+          await newProduct.save({ session });
+          exchange.stock_reserved = true;
+        }
+
+        // Put the returned item back into sellable stock once it's actually
+        // back in the warehouse.
+        if (status === "received" && !exchange.original_restocked) {
+          const originalProduct = await Product.findById(
+            exchange.original_item.product,
+          ).session(session);
+          if (originalProduct) {
+            const qty = exchange.original_item.quantity;
+            if (originalProduct.inventory_mode === "size") {
+              const current =
+                originalProduct.size_stock.get(exchange.original_item.size) ??
+                0;
+              originalProduct.size_stock.set(
+                exchange.original_item.size,
+                current + qty,
+              );
+            } else {
+              originalProduct.stock_quantity += qty;
+            }
+            await originalProduct.save({ session });
+          }
+          exchange.original_restocked = true;
+        }
+
+        // Don't dispatch the replacement until any amount due is in hand.
+        if (
+          status === "shipped" &&
+          exchange.amount_due > 0 &&
+          !exchange.amount_collected
+        ) {
+          throw Object.assign(
+            new Error(
+              "Can't ship the replacement until the amount due has been collected (send amount_collected: true)",
+            ),
+            { statusCode: 400 },
+          );
+        }
+
+        // Release reserved stock if the exchange is rejected/cancelled after
+        // approval (stock was already decremented).
+        if (
+          ["rejected", "cancelled"].includes(status) &&
+          exchange.stock_reserved
+        ) {
+          const newProduct = await Product.findById(
+            exchange.new_item.product,
+          ).session(session);
+          if (newProduct) {
+            const qty = exchange.new_item.quantity;
+            if (newProduct.inventory_mode === "size") {
+              const current =
+                newProduct.size_stock.get(exchange.new_item.size) ?? 0;
+              newProduct.size_stock.set(exchange.new_item.size, current + qty);
+            } else {
+              newProduct.stock_quantity += qty;
+            }
+            await newProduct.save({ session });
+          }
+          exchange.stock_reserved = false;
+        }
+
+        exchange.status = status;
+      }
+
+      await exchange.save({ session });
+      result = exchange;
+    });
 
     res.json({ success: true, data: result });
   } catch (err) {
@@ -428,5 +423,7 @@ export const updateExchangeStatus = async (req, res, next) => {
         .json({ success: false, message: err.message });
     }
     next(err);
+  } finally {
+    session.endSession();
   }
 };

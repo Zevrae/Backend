@@ -16,11 +16,7 @@ router.use(protect);
  * @swagger
  * tags:
  *   name: Exchanges
- *   description: >
- *     Post-delivery item exchanges. Size swaps (same product, different size)
- *     are completely free. Exchanging to a different product incurs a flat
- *     shipping charge (+ any price difference), collected at delivery time
- *     (COD-style) — no online payment gateway involved.
+ *   description: Post-delivery item exchanges. Free for a same-product size swap; a flat fee (plus any price gap) applies when exchanging to a different product.
  */
 
 /**
@@ -47,11 +43,11 @@ router.use(protect);
  *   post:
  *     summary: Request an exchange for one item of a delivered order
  *     description: >
- *       Only available within 7 days of delivery. Size swaps (same product,
- *       different size) are free. Exchanging to a different product incurs a
- *       flat shipping charge plus any price difference if the replacement
- *       costs more — this amount is collected at delivery time (COD-style),
- *       not via any payment gateway.
+ *       Only available within 7 days of delivery. If new_product is the same
+ *       as product (a size swap) it's free. If it's a different product, a
+ *       flat exchange fee plus any price difference (when the new item costs
+ *       more) is quoted in amount_due and collected offline at pickup — no
+ *       online payment step.
  *     tags: [Exchanges]
  *     security:
  *       - bearerAuth: []
@@ -66,7 +62,7 @@ router.use(protect);
  *               orderId: { type: string }
  *               product: { type: string, description: "Original product id, as it appears on the order" }
  *               size: { type: string, description: "Original item's size, if any" }
- *               new_product: { type: string, description: "Replacement product id — can be the same product (size swap) or a different one" }
+ *               new_product: { type: string, description: "Same id as product for a size swap, or a different product's id" }
  *               new_size: { type: string }
  *               quantity: { type: integer, default: 1 }
  *               reason: { type: string }
@@ -74,7 +70,7 @@ router.use(protect);
  *       201:
  *         description: Exchange requested
  *       400:
- *         description: Order not eligible, item not found, outside the exchange window, or replacement out of stock
+ *         description: Order not eligible, outside the exchange window, same size chosen for a size swap, or replacement out of stock
  *       404:
  *         description: Order or product not found
  *       409:
@@ -109,7 +105,7 @@ router.get("/:id", getExchangeById);
  * @swagger
  * /exchanges/{id}/cancel:
  *   post:
- *     summary: Cancel an exchange request (owner, only while status is 'requested'; admin can cancel anytime)
+ *     summary: Cancel an exchange (owner, only while status is 'requested'; admin can cancel anytime before it closes)
  *     tags: [Exchanges]
  *     security:
  *       - bearerAuth: []
@@ -133,10 +129,10 @@ router.post("/:id/cancel", cancelExchangeRequest);
  *     summary: Move an exchange through approved → picked_up → received → shipped → completed, or reject it (admin only)
  *     description: >
  *       Approving reserves the replacement item's stock; 'received' restocks
- *       the returned item; rejecting or cancelling after approval releases any
- *       reserved stock. When transitioning to 'picked_up', the admin can also
- *       set amount_collected=true to confirm the delivery agent collected the
- *       due amount.
+ *       the returned item; rejecting/cancelling after approval releases
+ *       reserved stock. When amount_due > 0, send amount_collected true once
+ *       the money's collected (typically at pickup) — 'shipped' is blocked
+ *       until then.
  *     tags: [Exchanges]
  *     security:
  *       - bearerAuth: []
@@ -151,16 +147,15 @@ router.post("/:id/cancel", cancelExchangeRequest);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [status]
  *             properties:
  *               status: { type: string, enum: [approved, picked_up, received, shipped, completed, rejected, cancelled] }
+ *               amount_collected: { type: boolean }
  *               admin_note: { type: string }
- *               amount_collected: { type: boolean, description: "Set to true when the delivery agent has collected the amount_due from the customer" }
  *     responses:
  *       200:
  *         description: Exchange updated
  *       400:
- *         description: Invalid transition (already closed)
+ *         description: Already closed, or trying to ship before the amount due is collected
  *       409:
  *         description: Replacement item is out of stock
  */
