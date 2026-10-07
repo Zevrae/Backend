@@ -1,7 +1,13 @@
-import express from 'express';
-import { createReview, getReviewsForProduct, updateReview, deleteReview } from '../controllers/reviewController.js';
-import { protect } from '../middleware/auth.js';
-import { uploadImages } from '../middleware/upload.js';
+import express from "express";
+import {
+  createReview,
+  getReviewsForProduct,
+  getRecentReviews,
+  updateReview,
+  deleteReview,
+} from "../controllers/reviewController.js";
+import { protect } from "../middleware/auth.js";
+import { uploadImages } from "../middleware/upload.js";
 
 // mergeParams lets this router read :productId when mounted inside productRoutes
 const router = express.Router({ mergeParams: true });
@@ -61,7 +67,10 @@ const router = express.Router({ mergeParams: true });
  *       201:
  *         description: Review created
  */
-router.route('/').get(getReviewsForProduct).post(protect, uploadImages, createReview);
+router
+  .route("/")
+  .get(getReviewsForProduct)
+  .post(protect, uploadImages, createReview);
 
 // Mounted at /api/products/:productId/reviews
 export default router;
@@ -114,7 +123,23 @@ const standaloneRouter = express.Router();
  *       404:
  *         description: Review not found
  */
-standaloneRouter.put('/:id', protect, uploadImages, updateReview);
-standaloneRouter.delete('/:id', protect, deleteReview);
+/**
+ * @swagger
+ * /reviews:
+ *   get:
+ *     summary: Recent reviews across all products (public)
+ *     description: Newest reviews that include a written comment — used for the homepage ticker. Only the reviewer's name is exposed.
+ *     tags: [Reviews]
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema: { type: integer, default: 10, maximum: 50 }
+ *     responses:
+ *       200:
+ *         description: List of recent reviews with reviewer name and product name
+ */
+standaloneRouter.get("/", getRecentReviews);
+standaloneRouter.put("/:id", protect, uploadImages, updateReview);
+standaloneRouter.delete("/:id", protect, deleteReview);
 
 export { standaloneRouter };

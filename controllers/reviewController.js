@@ -87,6 +87,26 @@ export const getReviewsForProduct = async (req, res, next) => {
   }
 };
 
+// @desc    Recent reviews across all products (public — powers the homepage ticker)
+// @route   GET /api/reviews
+export const getRecentReviews = async (req, res, next) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 10, 50);
+
+    const items = await Review.find({ comment: { $exists: true, $ne: "" } })
+      .populate("user", "name")
+      .populate("product", "name")
+      .sort("-created_at")
+      .limit(limit)
+      .select("rating comment user product created_at")
+      .lean();
+
+    res.json({ success: true, data: items });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc    Update own review (rating, comment, and/or photos)
 // @route   PUT /api/reviews/:id
 export const updateReview = async (req, res, next) => {
