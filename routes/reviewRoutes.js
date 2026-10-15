@@ -1,11 +1,5 @@
 import express from "express";
-import {
-  createReview,
-  getReviewsForProduct,
-  getRecentReviews,
-  updateReview,
-  deleteReview,
-} from "../controllers/reviewController.js";
+import { createReview, getReviewsForProduct, updateReview, deleteReview, getAllReviews } from '../controllers/reviewController.js';
 import { protect } from "../middleware/auth.js";
 import { uploadImages } from "../middleware/upload.js";
 
@@ -138,7 +132,7 @@ const standaloneRouter = express.Router();
  *       200:
  *         description: List of recent reviews with reviewer name and product name
  */
-standaloneRouter.get("/", getRecentReviews);
+standaloneRouter.get("/", getAllReviews);
 standaloneRouter.put("/:id", protect, uploadImages, updateReview);
 standaloneRouter.delete("/:id", protect, deleteReview);
 

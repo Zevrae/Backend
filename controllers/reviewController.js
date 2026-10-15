@@ -155,29 +155,31 @@ export const updateReview = async (req, res, next) => {
   }
 };
 
-// @desc    Soft delete own review (or any review, if admin)
-// @route   DELETE /api/reviews/:id
-export const deleteReview = async (req, res, next) => {
+// @desc    Get all reviews site-wide (for review ticker strip, etc.)
+// @route   GET /api/reviews
+export const getAllReviews = async (req, res, next) => {
   try {
-    const filter =
-      req.user.role === "admin"
-        ? { _id: req.params.id }
-        : { _id: req.params.id, user: req.user._id };
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+    const skip = (page - 1) * limit;
 
-    const review = await Review.findOne(filter);
-    if (!review)
-      return res
-        .status(404)
-        .json({ success: false, message: "Review not found" });
+    const filter = { is_deleted: { $ne: true } };
 
-    if (typeof review.softDelete === "function") {
-      await review.softDelete();
-    } else {
-      review.is_deleted = true;
-      await review.save();
-    }
+    const [items, total] = await Promise.all([
+      Review.find(filter)
+        .populate('user', 'name')
+        .sort('-created_at')
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Review.countDocuments(filter),
+    ]);
 
-    res.json({ success: true, message: "Review soft-deleted" });
+    res.json({
+      success: true,
+      data: items,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
   } catch (err) {
     next(err);
   }
