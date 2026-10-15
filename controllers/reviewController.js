@@ -162,3 +162,33 @@ export const deleteReview = async (req, res, next) => {
     next(err);
   }
 };
+
+// @desc    Get all reviews site-wide (for review ticker strip, etc.)
+// @route   GET /api/reviews
+export const getAllReviews = async (req, res, next) => {
+  try {
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit, 10) || 40, 100);
+    const skip = (page - 1) * limit;
+
+    const filter = { is_deleted: { $ne: true } };
+
+    const [items, total] = await Promise.all([
+      Review.find(filter)
+        .populate('user', 'name')
+        .sort('-created_at')
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Review.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      data: items,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (err) {
+    next(err);
+  }
+};

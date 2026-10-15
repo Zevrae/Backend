@@ -1,5 +1,5 @@
 import express from 'express';
-import { createReview, getReviewsForProduct, updateReview, deleteReview } from '../controllers/reviewController.js';
+import { createReview, getReviewsForProduct, updateReview, deleteReview, getAllReviews } from '../controllers/reviewController.js';
 import { protect } from '../middleware/auth.js';
 import { uploadImages } from '../middleware/upload.js';
 
@@ -114,6 +114,7 @@ const standaloneRouter = express.Router();
  *       404:
  *         description: Review not found
  */
+standaloneRouter.get('/', getAllReviews);
 standaloneRouter.put('/:id', protect, uploadImages, updateReview);
 standaloneRouter.delete('/:id', protect, deleteReview);
 
