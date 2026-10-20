@@ -51,6 +51,7 @@ app.use(
 const allowedOrigins = [
   "https://www.zevrae.com",
   "https://admin-gaf9.onrender.com",
+  "https://frontend-sio7.onrender.com",
   "https://zevrae.com",
   "http://localhost:5000",
   "http://localhost:5050",
