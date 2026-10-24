@@ -107,6 +107,34 @@ export const getRecentReviews = async (req, res, next) => {
   }
 };
 
+// @desc    Soft delete own review (or any review, if admin)
+// @route   DELETE /api/reviews/:id
+export const deleteReview = async (req, res, next) => {
+  try {
+    const filter =
+      req.user.role === "admin"
+        ? { _id: req.params.id }
+        : { _id: req.params.id, user: req.user._id };
+
+    const review = await Review.findOne(filter);
+    if (!review)
+      return res
+        .status(404)
+        .json({ success: false, message: "Review not found" });
+
+    if (typeof review.softDelete === "function") {
+      await review.softDelete();
+    } else {
+      review.is_deleted = true;
+      await review.save();
+    }
+
+    res.json({ success: true, message: "Review soft-deleted" });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // @desc    Update own review (rating, comment, and/or photos)
 // @route   PUT /api/reviews/:id
 export const updateReview = async (req, res, next) => {
@@ -167,8 +195,8 @@ export const getAllReviews = async (req, res, next) => {
 
     const [items, total] = await Promise.all([
       Review.find(filter)
-        .populate('user', 'name')
-        .sort('-created_at')
+        .populate("user", "name")
+        .sort("-created_at")
         .skip(skip)
         .limit(limit)
         .lean(),

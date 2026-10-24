@@ -5,7 +5,7 @@ import Product from "../models/Product.js";
 
 // Flat charge (in rupees) for exchanging to a DIFFERENT product. A same-
 // product size swap is always free.
-export const EXCHANGE_FEE = Number(process.env.EXCHANGE_FEE) || 99;
+export const EXCHANGE_FEE = Number(process.env.EXCHANGE_SHIPPING_FEE) || 99;
 
 // How long after DELIVERY a customer can request an exchange (needs
 // Order.delivered_at; falls back to updated_at for older orders).

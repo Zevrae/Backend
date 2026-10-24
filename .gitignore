@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 #test files
 test-exchange.js
+
+
+.DS_Store

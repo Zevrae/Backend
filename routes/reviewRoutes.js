@@ -1,5 +1,11 @@
 import express from "express";
-import { createReview, getReviewsForProduct, updateReview, deleteReview, getAllReviews } from '../controllers/reviewController.js';
+import {
+  createReview,
+  getReviewsForProduct,
+  updateReview,
+  deleteReview,
+  getAllReviews,
+} from "../controllers/reviewController.js";
 import { protect } from "../middleware/auth.js";
 import { uploadImages } from "../middleware/upload.js";
 
