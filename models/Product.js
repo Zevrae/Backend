@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { slugify } from "../utils/slug.js";
 const { Schema } = mongoose;
 
 const ProductSchema = new Schema(
@@ -8,6 +9,18 @@ const ProductSchema = new Schema(
       required: [true, "Product name is required"],
       trim: true,
       maxlength: [200, "Name cannot exceed 200 characters"],
+    },
+    // URL-friendly identifier used in storefront links
+    // (/product/zevrae-durga-puja-oversized-t-shirt). Generated from `name`
+    // once, when the product is first saved, and then left alone — so a
+    // later rename doesn't break links people already shared. `sparse` lets
+    // not-yet-backfilled products (no slug) coexist with the unique index.
+    slug: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      unique: true,
+      sparse: true,
     },
     description: {
       type: String,
@@ -86,9 +99,10 @@ const ProductSchema = new Schema(
           // silently read as undefined, letting inconsistent data through.
           // getUpdate() reliably returns the actual update payload in
           // either context.
-          const update = typeof this.getUpdate === "function" ? this.getUpdate() : null;
+          const update =
+            typeof this.getUpdate === "function" ? this.getUpdate() : null;
           const mode = update
-            ? update.inventory_mode ?? update.$set?.inventory_mode
+            ? (update.inventory_mode ?? update.$set?.inventory_mode)
             : this.inventory_mode;
 
           if (mode === "size" && (!arr || arr.length === 0)) {
@@ -193,6 +207,29 @@ const ProductSchema = new Schema(
   },
 );
 
+// Generate the slug on first save. Lives on the model (not in one controller)
+// so every creation path gets it — admin-created products and the
+// auto-created "Customize" products alike.
+ProductSchema.pre("validate", async function (next) {
+  try {
+    if (!this.slug && this.name) {
+      const base = slugify(this.name) || "product";
+      // Include soft-deleted products: a deleted product can be restored,
+      // and its slug must still be unique when it comes back.
+      const taken = await this.constructor
+        .exists({ slug: base })
+        .setOptions({ withDeleted: true });
+      // On a clash, tack on the tail of this product's own _id — unique by
+      // construction, so no retry loop, and the same name (e.g. repeated
+      // custom designs) never collides.
+      this.slug = taken ? `${base}-${this._id.toString().slice(-6)}` : base;
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 // Keep stock_quantity in sync with size_stock
 ProductSchema.pre("validate", function (next) {
   if (this.size_stock) {
@@ -208,12 +245,13 @@ ProductSchema.pre("validate", function (next) {
 ProductSchema.pre("findOneAndUpdate", function (next) {
   const update = this.getUpdate();
   if (update && update.size_stock !== undefined) {
-    const entries = update.size_stock instanceof Map
-      ? Array.from(update.size_stock.values())
-      : Object.values(update.size_stock || {});
+    const entries =
+      update.size_stock instanceof Map
+        ? Array.from(update.size_stock.values())
+        : Object.values(update.size_stock || {});
     update.stock_quantity = entries.reduce(
       (sum, qty) => sum + (Number(qty) || 0),
-      0
+      0,
     );
   }
   next();

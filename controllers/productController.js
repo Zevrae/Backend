@@ -7,6 +7,18 @@ import {
   isAppwriteConfigured,
 } from "../utils/appwrite.js";
 import { delPattern } from "../utils/cache.js";
+import { slugify, isObjectIdString } from "../utils/slug.js";
+
+// If an admin supplies a slug explicitly, clean it up the same way a
+// generated one is; an empty/unusable one is dropped so the model generates
+// one from the name instead (an empty-string slug would collide with every
+// other empty slug under the unique index).
+function normalizeSlugInBody(body) {
+  if (body.slug === undefined) return;
+  const cleaned = slugify(body.slug);
+  if (cleaned) body.slug = cleaned;
+  else delete body.slug;
+}
 
 // Validation helper
 function validateInventory(reqBody) {
@@ -35,6 +47,7 @@ export const createProduct = async (req, res, next) => {
   try {
     const error = validateInventory(req.body);
     if (error) return res.status(400).json({ success: false, message: error });
+    normalizeSlugInBody(req.body);
 
     const product = await Product.create(req.body);
     await delPattern("products:");
@@ -85,11 +98,17 @@ export const getProducts = async (req, res, next) => {
   }
 };
 
-// @desc    Get a single product by id
+// @desc    Get a single product by id OR slug. Slug URLs
+//          (/product/zevrae-durga-puja-oversized-t-shirt) are what the
+//          storefront links to now, but plain ObjectId URLs keep working so
+//          links that were already shared/indexed don't break.
 // @route   GET /api/products/:id
 export const getProductById = async (req, res, next) => {
   try {
-    const product = await Product.findById(req.params.id).lean();
+    const { id } = req.params;
+    const product = isObjectIdString(id)
+      ? await Product.findById(id).lean()
+      : await Product.findOne({ slug: id.toLowerCase() }).lean();
     if (!product) {
       return res
         .status(404)
@@ -107,6 +126,7 @@ export const updateProduct = async (req, res, next) => {
   try {
     const error = validateInventory(req.body);
     if (error) return res.status(400).json({ success: false, message: error });
+    normalizeSlugInBody(req.body);
 
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, is_deleted: { $ne: true } },
